@@ -1,4 +1,4 @@
-# Alien
+# Kronos
 
 Agente de código autônomo para o terminal e o VS Code. Lê, entende, altera e verifica código no seu projeto, com raciocínio ReAct (pensar → agir → observar), planejamento, autocorreção, portões determinísticos de verificação e de escopo, orquestração multiagente, RAG sobre o código e memória vetorial de longo prazo.
 
@@ -17,17 +17,17 @@ Causa raiz: o laço começa em i = 1 e pula o primeiro item…
 
 ## Requisitos
 
-O mesmo núcleo roda no CLI e na extensão do VS Code, então os requisitos são os mesmos, com duas diferenças: o CLI precisa de **Node.js 22+**, e a extensão precisa de **VS Code 1.90+** (ela já leva o Node do próprio VS Code e o código do Alien dentro do `.vsix`, sem precisar de Node nem npm na máquina).
+O mesmo núcleo roda no CLI e na extensão do VS Code, então os requisitos são os mesmos, com duas diferenças: o CLI precisa de **Node.js 22+**, e a extensão precisa de **VS Code 1.90+** (ela já leva o Node do próprio VS Code e o código do Kronos dentro do `.vsix`, sem precisar de Node nem npm na máquina).
 
 **Obrigatório**
 
 - **Um modelo**, de uma destas formas:
-  - **Ollama** instalado e rodando em `http://localhost:11434`. Para outro endereço, use `OLLAMA_HOST` no CLI ou *Settings → Alien → Ollama Host* na extensão. O modelo padrão, `glm-5.3-flash:cloud`, roda na nuvem do Ollama: é preciso entrar na conta com `ollama signin`. Modelos locais (`-m qwen3:8b`, por exemplo) não precisam de conta, só de `ollama pull`.
+  - **Ollama** instalado e rodando em `http://localhost:11434`. Para outro endereço, use `OLLAMA_HOST` no CLI ou *Settings → Kronos → Ollama Host* na extensão. O modelo padrão, `glm-5.3-flash:cloud`, roda na nuvem do Ollama: é preciso entrar na conta com `ollama signin`. Modelos locais (`-m qwen3:8b`, por exemplo) não precisam de conta, só de `ollama pull`.
   - **Ou Claude**, com `ANTHROPIC_API_KEY` no ambiente. Na extensão, a variável precisa existir no ambiente em que o VS Code foi aberto.
   - **Ou uma API compatível com OpenAI** (OpenRouter por padrão), com `OPENROUTER_API_KEY` no ambiente e `-p openai`. O modelo padrão é `qwen/qwen3-coder-next`; outro endereço vai em `OPENAI_BASE_URL`.
-- **Linux ou macOS, com `bash`, `git`, `grep` e `find` no PATH** (os dois já trazem). No **Windows**, o Alien roda dentro do WSL: veja o [Guia passo a passo](#guia-passo-a-passo-vs-code).
+- **Linux ou macOS, com `bash`, `git`, `grep` e `find` no PATH** (os dois já trazem). No **Windows**, o Kronos roda dentro do WSL: veja o [Guia passo a passo](#guia-passo-a-passo-vs-code).
 
-O agente roda no laço próprio do Alien, com o modelo configurado — Ollama ou Claude (este pela API, com `ANTHROPIC_API_KEY`). O modo multiagente (`--orchestrate`), as checagens de pronto (`--gate`) e a reescrita de harness (`src/rhi.ts`) usam esse mesmo modelo, por meio de um agente só de leitura que devolve as decisões em JSON validado.
+O agente roda no laço próprio do Kronos, com o modelo configurado — Ollama ou Claude (este pela API, com `ANTHROPIC_API_KEY`). O modo multiagente (`--orchestrate`), as checagens de pronto (`--gate`) e a reescrita de harness (`src/rhi.ts`) usam esse mesmo modelo, por meio de um agente só de leitura que devolve as decisões em JSON validado.
 
 **Opcional, por recurso**
 
@@ -42,7 +42,7 @@ O agente roda no laço próprio do Alien, com o modelo configurado — Ollama ou
 ```bash
 npm install
 npm run build
-npm link            # deixa o comando `alien` disponível no sistema
+npm link            # deixa o comando `kronos` disponível no sistema
 ```
 
 Provedor local (padrão quando não há chave da Anthropic):
@@ -52,28 +52,28 @@ ollama pull qwen3-embedding:0.6b  # embeddings para RAG e memória vetorial (mel
 # modelo de chat padrão: glm-5.3-flash:cloud (troque com -m, ex.: -m qwen3:8b)
 ```
 
-Claude: exporte `ANTHROPIC_API_KEY` e o Alien passa a usar `claude-opus-5-5` (ou force com `-p anthropic`).
+Claude: exporte `ANTHROPIC_API_KEY` e o Kronos passa a usar `claude-opus-5-5` (ou force com `-p anthropic`).
 
 OpenRouter: exporte `OPENROUTER_API_KEY` e rode com `-p openai` (modelo padrão `qwen/qwen3-coder-next`; outro com `-m`).
 
 ## Extensão do VS Code
 
-Chat do Alien na barra lateral (ícone do alienígena), com o mesmo núcleo do CLI.
+Chat do Kronos na barra lateral (ícone da ampulheta), com o mesmo núcleo do CLI.
 
-Instale pelo painel **Extensões** do VS Code, buscando **Alien — Agente de Código** — o [Guia passo a passo](#guia-passo-a-passo-vs-code) mostra cada etapa, inclusive no Windows. Ou gere o pacote a partir do código:
+Instale pelo painel **Extensões** do VS Code, buscando **Kronos — Agente de Código** — o [Guia passo a passo](#guia-passo-a-passo-vs-code) mostra cada etapa, inclusive no Windows. Ou gere o pacote a partir do código:
 
 ```bash
 cd vscode
 npm install
-npm run package                                   # gera alien-linux-x64-<versão>.vsix
-code --install-extension alien-linux-x64-*.vsix --force
+npm run package                                   # gera kronos-linux-x64-<versão>.vsix
+code --install-extension kronos-linux-x64-*.vsix --force
 ```
 
-Configurações em *Settings → Alien*. O modelo também pode ser trocado no seletor do chat, que lista os modelos instalados no Ollama. Referências `arquivo:linha` abrem no editor; permissões aparecem como botões Permitir/Negar; prints e arquivos podem ser anexados (📎, Ctrl+V ou arrastar): imagens vão para o modelo quando ele tem visão, PDFs viram texto com `pdftotext`. A opção **multiagente** usa o mesmo fluxo do `--orchestrate`.
+Configurações em *Settings → Kronos*. O modelo também pode ser trocado no seletor do chat, que lista os modelos instalados no Ollama. Referências `arquivo:linha` abrem no editor; permissões aparecem como botões Permitir/Negar; prints e arquivos podem ser anexados (📎, Ctrl+V ou arrastar): imagens vão para o modelo quando ele tem visão, PDFs viram texto com `pdftotext`. A opção **multiagente** usa o mesmo fluxo do `--orchestrate`.
 
 ## Guia passo a passo (VS Code)
 
-Do zero até a primeira pergunta no chat. **No Linux, pule para o passo 4.** No Windows, o Alien roda dentro do **WSL** (o Linux integrado ao Windows), porque chama `bash`, `grep` e `find` diretamente; o Windows sem WSL não é suportado.
+Do zero até a primeira pergunta no chat. **No Linux, pule para o passo 4.** No Windows, o Kronos roda dentro do **WSL** (o Linux integrado ao Windows), porque chama `bash`, `grep` e `find` diretamente; o Windows sem WSL não é suportado.
 
 > As imagens são ilustrações do que aparece em cada passo, não capturas de tela.
 
@@ -99,11 +99,11 @@ Aperte `F1`, digite **WSL: Connect to WSL** e Enter. Uma janela nova abre conect
 
 Prefira pastas do Linux a `/mnt/c/...`: no disco do Windows, `git`, buscas e testes ficam bem mais lentos. Guia oficial: [Desenvolver no WSL com o VS Code](https://code.visualstudio.com/docs/remote/wsl).
 
-### 4. Instalar o Alien
+### 4. Instalar o Kronos
 
-Em **Extensões**, busque **Alien — Agente de Código** (publicado por *vitortrack*) e clique em **Instalar**. No Windows, com a janela conectada ao WSL, o botão aparece como **Instalar em WSL: Ubuntu**.
+Em **Extensões**, busque **Kronos — Agente de Código** (publicado por *vitortrack*) e clique em **Instalar**. No Windows, com a janela conectada ao WSL, o botão aparece como **Instalar em WSL: Ubuntu**.
 
-![Painel Extensões com Alien — Agente de Código e o botão Instalar em WSL: Ubuntu](vscode/media/guide/04-install-alien.png)
+![Painel Extensões com Kronos — Agente de Código e o botão Instalar em WSL: Ubuntu](vscode/media/guide/04-install-kronos.png)
 
 ### 5. Instalar o Ollama e os modelos
 
@@ -131,7 +131,7 @@ Outras formas de ter o modelo:
 
 ### 6. Conferir as configurações
 
-Abra as configurações com `Ctrl+,` e busque **alien**. No Windows, mude na aba **Remoto [WSL: Ubuntu]**. Os padrões já funcionam com o Ollama do passo 5; o que costuma mudar:
+Abra as configurações com `Ctrl+,` e busque **kronos**. No Windows, mude na aba **Remoto [WSL: Ubuntu]**. Os padrões já funcionam com o Ollama do passo 5; o que costuma mudar:
 
 | Configuração | Quando mudar |
 |---|---|
@@ -140,27 +140,27 @@ Abra as configurações com `Ctrl+,` e busque **alien**. No Windows, mude na aba
 | **Mode** | `ask` pede confirmação para escrever e rodar comandos; `auto` só confirma comandos destrutivos; `read-only` nunca altera nada |
 | **Ollama Host** | só se o Ollama estiver em outro endereço (por exemplo no Windows, sem rede espelhada) |
 
-![Configurações do VS Code filtradas por alien, destacando Ollama Host](vscode/media/guide/06-settings.png)
+![Configurações do VS Code filtradas por kronos, destacando Ollama Host](vscode/media/guide/06-settings.png)
 
 ### 7. Usar o chat
 
-Clique no **ícone do alienígena** na barra lateral, escreva a pergunta ou a tarefa e clique em **Enviar**. Referências `arquivo:linha` nas respostas abrem o arquivo na linha. O seletor ao lado do *Enviar* troca o modelo entre os instalados no Ollama.
+Clique no **ícone da ampulheta** na barra lateral, escreva a pergunta ou a tarefa e clique em **Enviar**. Referências `arquivo:linha` nas respostas abrem o arquivo na linha. O seletor ao lado do *Enviar* troca o modelo entre os instalados no Ollama.
 
-![Chat do Alien com uma pergunta, a resposta e o seletor de modelo](vscode/media/guide/07-chat.png)
+![Chat do Kronos com uma pergunta, a resposta e o seletor de modelo](vscode/media/guide/07-chat.png)
 
 ### Usar o CLI no WSL
 
-O comando `alien` também roda no WSL: instale o Node.js 22+ dentro do Ubuntu (por exemplo com [nvm](https://github.com/nvm-sh/nvm)) e siga a [Instalação](#instalação) no terminal do WSL.
+O comando `kronos` também roda no WSL: instale o Node.js 22+ dentro do Ubuntu (por exemplo com [nvm](https://github.com/nvm-sh/nvm)) e siga a [Instalação](#instalação) no terminal do WSL.
 
 ## Uso
 
 ```bash
-alien                                   # modo interativo na pasta atual
-alien "adicione paginação na listagem"  # executa e sai
-alien -C ../meu-projeto --mode auto "corrija o build"
-alien --orchestrate "crie o módulo de cupons com testes"
-alien --gate --gate-file card-746.json "implemente o card 746"
-alien -p anthropic --effort xhigh "investigue o vazamento de memória"
+kronos                                   # modo interativo na pasta atual
+kronos "adicione paginação na listagem"  # executa e sai
+kronos -C ../meu-projeto --mode auto "corrija o build"
+kronos --orchestrate "crie o módulo de cupons com testes"
+kronos --gate --gate-file card-746.json "implemente o card 746"
+kronos -p anthropic --effort xhigh "investigue o vazamento de memória"
 ```
 
 | Opção | Descrição |
@@ -175,7 +175,7 @@ alien -p anthropic --effort xhigh "investigue o vazamento de memória"
 | `--harness <arquivo>` | texto de harness específico da tarefa (RHI), posto antes do pedido |
 | `--handoff <arquivo>` | lê a nota da execução anterior no início e grava a nota desta no fim |
 | `--attempts <n>` | melhor de N: tentativas isoladas, fica a que passa nos testes com o menor diff |
-| `--review-model <modelo>` | a revisão roda noutro modelo (ex.: um modelo maior do Ollama), como agente crítico do próprio motor Alien, só leitura, e já liga a revisão; a tarefa continua no modelo principal. Modelos `claude-*` usam o provedor Anthropic do Alien (exige `ANTHROPIC_API_KEY`). Também `ALIEN_REVIEW_MODEL` e, na extensão, `alien.reviewModel` |
+| `--review-model <modelo>` | a revisão roda noutro modelo (ex.: um modelo maior do Ollama), como agente crítico do próprio motor Kronos, só leitura, e já liga a revisão; a tarefa continua no modelo principal. Modelos `claude-*` usam o provedor Anthropic do Kronos (exige `ANTHROPIC_API_KEY`). Também `KRONOS_REVIEW_MODEL` e, na extensão, `kronos.reviewModel` |
 | `--review` | liga a revisão por um agente crítico (padrão: desligada; medido: mesmo acerto e 19–38% menos tokens sem ela, com a checagem de escopo e o portão de verificação sempre ativos) |
 | `--max-steps <n>` | limite de passos por agente (padrão 80) |
 | `--budget <tokens>` | para quando o consumo total passar do limite |
@@ -184,19 +184,19 @@ alien -p anthropic --effort xhigh "investigue o vazamento de memória"
 | `--embed-model <nome>` | modelo de embedding (padrão `qwen3-embedding:0.6b`) |
 | `--lang <idioma>` | idioma de tudo o que o agente escreve: `pt-BR` (padrão), `en`, `es`, `fr`, `de`, `it` ou `auto` (o da pergunta) |
 | `--thinking` | mostra o raciocínio do modelo (por padrão aparece só "✻ pensando…") |
-| `--no-log` | não grava o trace da sessão em `~/.alien/sessions` |
+| `--no-log` | não grava o trace da sessão em `~/.kronos/sessions` |
 | `-c`, `--continue` | retoma a última conversa deste projeto |
 | `-r`, `--resume <id>` | retoma uma conversa salva |
 | `--fork` | com `-c` ou `-r`: continua numa cópia, sem alterar a original |
 
 Comandos no modo interativo: `/plan`, `/mode`, `/review on|off`, `/lang <idioma>`, `/traduzir [idioma]`, `/thinking on|off`, `/orchestrate <tarefa>`, `/index`, `/memory`, `/usage`, `/sessions`, `/resume <id>`, `/fork`, `/clear`, `/exit`. **Ctrl+C** interrompe a tarefa em andamento sem sair.
 
-Cada conversa é salva ao fim de cada tarefa em `~/.alien/projects/<projeto>/sessions/<id>.json` (histórico do agente, pedidos e respostas, plano e uso). A extensão do VS Code restaura a conversa aberta quando a janela recarrega; **Nova conversa** começa outra.
+Cada conversa é salva ao fim de cada tarefa em `~/.kronos/projects/<projeto>/sessions/<id>.json` (histórico do agente, pedidos e respostas, plano e uso). A extensão do VS Code restaura a conversa aberta quando a janela recarrega; **Nova conversa** começa outra.
 
 ### Fazendo perguntas
 
 ```bash
-alien -C ../meu-projeto --mode read-only
+kronos -C ../meu-projeto --mode read-only
 › Como funciona a consulta pública de protocolo? O que reutilizar para criar outra?
 › /traduzir en          # a última resposta, em inglês
 › /lang es              # daqui em diante, tudo em espanhol
@@ -231,25 +231,25 @@ A saída é Markdown renderizado no terminal (títulos, listas, negrito, blocos 
 
 | Componente | Como está implementado | Onde |
 |---|---|---|
-| **1. Núcleo cognitivo** | Persona de engenheiro sênior, método de resolução (evidência → causa raiz → decisão → verificação → reflexão → aprendizado), guardrails (escopo, segredos, ações destrutivas) e um prompt por papel (main, worker, explorer, planner, critic). Instruções do projeto em `ALIEN.md`, `AGENTS.md` ou `CLAUDE.md` são carregadas automaticamente. | `src/prompts.ts` |
-| **2. Memória** | **Curto prazo:** histórico da sessão, com compactação automática (resumo com o pedido original fixo) quando a janela do modelo enche; saídas antigas de ferramenta são mascaradas em blocos de 10, saídas idênticas ficam só na cópia mais nova e argumentos grandes de chamadas antigas (o conteúdo de um `write_file`, por exemplo) são encurtados. **Longo prazo:** banco vetorial em `~/.alien/projects/<projeto>/memory.jsonl` com *fatos*, *lições* e *episódios*; as lembranças relevantes são recuperadas no início de cada tarefa, os episódios são gravados automaticamente ao concluir e o agente consulta a memória com `recall`. | `src/memory.ts`, `src/providers/ollama.ts` |
+| **1. Núcleo cognitivo** | Persona de engenheiro sênior, método de resolução (evidência → causa raiz → decisão → verificação → reflexão → aprendizado), guardrails (escopo, segredos, ações destrutivas) e um prompt por papel (main, worker, explorer, planner, critic). Instruções do projeto em `KRONOS.md`, `AGENTS.md` ou `CLAUDE.md` são carregadas automaticamente. | `src/prompts.ts` |
+| **2. Memória** | **Curto prazo:** histórico da sessão, com compactação automática (resumo com o pedido original fixo) quando a janela do modelo enche; saídas antigas de ferramenta são mascaradas em blocos de 10, saídas idênticas ficam só na cópia mais nova e argumentos grandes de chamadas antigas (o conteúdo de um `write_file`, por exemplo) são encurtados. **Longo prazo:** banco vetorial em `~/.kronos/projects/<projeto>/memory.jsonl` com *fatos*, *lições* e *episódios*; as lembranças relevantes são recuperadas no início de cada tarefa, os episódios são gravados automaticamente ao concluir e o agente consulta a memória com `recall`. | `src/memory.ts`, `src/providers/ollama.ts` |
 | **3. Planejamento** | Laço ReAct; planner dedicado no modo `--orchestrate`; autocorreção (o erro volta como observação estruturada, e após 3 falhas seguidas o agente é instruído a mudar de estratégia); antes de concluir, **portão de verificação** (se mexeu em código e não rodou nada depois da última edição, pede uma vez para rodar testes/build) e **checagem de escopo** (áreas do diff que o pedido não menciona); revisor independente opcional (`--review`). | `src/agent.ts`, `src/orchestrator.ts` |
-| **4. Ferramentas** | Com Ollama: `bash`, `read_file`, `write_file`, `edit_file`, `list_dir`, `glob`, `grep`, `run_code`, `update_plan`, `semantic_search` (RAG), `delegate`, `recall`, `status`, `skill` (só quando há skills) e `report_conflict` (encerra a tarefa relatando que um teste ou o código contradiz o pedido, em vez de contornar; só aceito depois de editar e rodar algo). `web_fetch` e `remember` entram com `load_tools` ou com uma skill que os cite. Um script Node no `run_code` chama `tools.read_file`, `tools.grep`, `tools.glob`, `tools.list_dir` e `tools.bash` (até 50 por script, com as mesmas permissões) e só o que ele imprime volta ao modelo: várias leituras e buscas viram um passo só. Com Claude, o agente principal fica só com `bash` no lugar de `list_dir`, `glob`, `grep`, `run_code`, `update_plan` e `remember` (na avaliação, as ferramentas dedicadas custavam ~40% mais passos e tokens sem ganho de acerto). Saída maior que 20 mil caracteres vai para `.alien/outputs/` e o modelo recebe o início (40%), o fim (60%) e o caminho. Entradas validadas contra o schema; caminhos presos ao workspace (inclusive via symlink); permissões por modo; detecção de comandos destrutivos; leitura de `.env` e do ambiente de containers sempre pede confirmação. | `src/tools.ts`, `src/validate.ts` |
-| **5. Observabilidade** | Trace de cada passo (texto do modelo, chamadas, resultados, tokens e custo) em `~/.alien/sessions/*.jsonl`; contagem de tokens e custo estimado ao fim de cada tarefa; travas contra loop (limite de passos, chamada idêntica repetida, orçamento de tokens) e Ctrl+C para interromper. | `src/session.ts`, `src/agent.ts` |
+| **4. Ferramentas** | Com Ollama: `bash`, `read_file`, `write_file`, `edit_file`, `list_dir`, `glob`, `grep`, `run_code`, `update_plan`, `semantic_search` (RAG), `delegate`, `recall`, `status`, `skill` (só quando há skills) e `report_conflict` (encerra a tarefa relatando que um teste ou o código contradiz o pedido, em vez de contornar; só aceito depois de editar e rodar algo). `web_fetch` e `remember` entram com `load_tools` ou com uma skill que os cite. Um script Node no `run_code` chama `tools.read_file`, `tools.grep`, `tools.glob`, `tools.list_dir` e `tools.bash` (até 50 por script, com as mesmas permissões) e só o que ele imprime volta ao modelo: várias leituras e buscas viram um passo só. Com Claude, o agente principal fica só com `bash` no lugar de `list_dir`, `glob`, `grep`, `run_code`, `update_plan` e `remember` (na avaliação, as ferramentas dedicadas custavam ~40% mais passos e tokens sem ganho de acerto). Saída maior que 20 mil caracteres vai para `.kronos/outputs/` e o modelo recebe o início (40%), o fim (60%) e o caminho. Entradas validadas contra o schema; caminhos presos ao workspace (inclusive via symlink); permissões por modo; detecção de comandos destrutivos; leitura de `.env` e do ambiente de containers sempre pede confirmação. | `src/tools.ts`, `src/validate.ts` |
+| **5. Observabilidade** | Trace de cada passo (texto do modelo, chamadas, resultados, tokens e custo) em `~/.kronos/sessions/*.jsonl`; contagem de tokens e custo estimado ao fim de cada tarefa; travas contra loop (limite de passos, chamada idêntica repetida, orçamento de tokens) e Ctrl+C para interromper. | `src/session.ts`, `src/agent.ts` |
 
 **Multiagente.** O agente principal age como gerente: delega pesquisa ampla a *explorers* (somente leitura, rodam em paralelo) e subtarefas independentes a *workers*, e cada sub-agente começa com contexto limpo. No `--orchestrate`, o fluxo é contrato → fatias com portão → revisão (veja a tabela de opções).
 
-**Motor de decisão.** Contratos, checagens de pronto, o critério de diff mínimo e o RHI (`src/rhi.ts`: `refine`, `compare` e `digest` do texto de harness) usam um juiz do próprio Alien, com o mesmo modelo do agente, que devolve JSON validado contra um schema.
+**Motor de decisão.** Contratos, checagens de pronto, o critério de diff mínimo e o RHI (`src/rhi.ts`: `refine`, `compare` e `digest` do texto de harness) usam um juiz do próprio Kronos, com o mesmo modelo do agente, que devolve JSON validado contra um schema.
 
-**RAG.** `semantic_search` indexa o código em trechos de 60 linhas (com sobreposição) e ranqueia combinando similaridade de embeddings (peso 0,8) e BM25 (0,2). O agente escreve a busca como pergunta + identificadores prováveis em inglês, o que funciona como expansão de query. O índice é incremental e fica em `~/.alien/projects/`, fora do repositório. Sem modelo de embedding, cai para BM25 puro.
+**RAG.** `semantic_search` indexa o código em trechos de 60 linhas (com sobreposição) e ranqueia combinando similaridade de embeddings (peso 0,8) e BM25 (0,2). O agente escreve a busca como pergunta + identificadores prováveis em inglês, o que funciona como expansão de query. O índice é incremental e fica em `~/.kronos/projects/`, fora do repositório. Sem modelo de embedding, cai para BM25 puro.
 
 **Robustez com modelos locais.** Modelos menores às vezes escrevem a chamada de ferramenta como texto (`<tool_call>…`, bloco JSON). O provedor do Ollama reconhece esses formatos e executa a chamada mesmo assim. Números enviados como string são convertidos automaticamente.
 
 ## Skills
 
-O Alien lê skills no formato do Claude Code (`SKILL.md` com `name` e `description` no frontmatter) em `.claude/skills/` e `.agents/skills/` do projeto, em `~/.claude/skills/` e em `~/.alien/skills/`; com o mesmo nome, vale a do projeto. O prompt lista só nome e descrição; o agente carrega o texto completo (e os arquivos de apoio da pasta) com a ferramenta `skill` quando a tarefa combina, e uma skill com `allowed-tools` libera as ferramentas que cita. Sem skills, nada muda no prompt nem nas ferramentas. Na avaliação, com uma regra de projeto que só existe numa skill, o acerto foi de 12/20 para 19/20 e o agente carregou a skill nas 20 execuções.
+O Kronos lê skills no formato do Claude Code (`SKILL.md` com `name` e `description` no frontmatter) em `.claude/skills/` e `.agents/skills/` do projeto, em `~/.claude/skills/` e em `~/.kronos/skills/`; com o mesmo nome, vale a do projeto. O prompt lista só nome e descrição; o agente carrega o texto completo (e os arquivos de apoio da pasta) com a ferramenta `skill` quando a tarefa combina, e uma skill com `allowed-tools` libera as ferramentas que cita. Sem skills, nada muda no prompt nem nas ferramentas. Na avaliação, com uma regra de projeto que só existe numa skill, o acerto foi de 12/20 para 19/20 e o agente carregou a skill nas 20 execuções.
 
-**Revisão automática.** Depois de uma tarefa com 10 passos ou mais, uma chamada separada relê a conversa (pedidos anteriores, chamadas de ferramenta, resposta final) e decide se cria ou atualiza uma skill de classe de tarefa em `~/.alien/skills/` — por exemplo quando o usuário corrigiu o jeito de trabalhar ou surgiu uma técnica reaproveitável. Ela só escreve ali: as skills do projeto e as de `~/.claude/skills/` são só leitura. `ALIEN_USER_SKILLS=off` desliga a revisão e as skills de usuário (a avaliação usa assim).
+**Revisão automática.** Depois de uma tarefa com 10 passos ou mais, uma chamada separada relê a conversa (pedidos anteriores, chamadas de ferramenta, resposta final) e decide se cria ou atualiza uma skill de classe de tarefa em `~/.kronos/skills/` — por exemplo quando o usuário corrigiu o jeito de trabalhar ou surgiu uma técnica reaproveitável. Ela só escreve ali: as skills do projeto e as de `~/.claude/skills/` são só leitura. `KRONOS_USER_SKILLS=off` desliga a revisão e as skills de usuário (a avaliação usa assim).
 
 ## Edição de arquivos
 
@@ -310,4 +310,4 @@ src/
 
 - As ferramentas de arquivo não saem do workspace. O `bash` roda com as permissões do seu usuário: use `--mode ask` (padrão) em projetos importantes e `--mode auto` só onde confia no resultado.
 - Comandos destrutivos (`rm -rf /`, `sudo`, `git push --force`, `git reset --hard`, `curl | sh`, …) sempre pedem confirmação, mesmo em `auto`.
-- Índice, memória, sessões e skills ficam em `~/.alien/`, fora do projeto. Dentro do projeto, `.alien/` guarda só saídas longas e anexos e já cria o próprio `.gitignore`.
+- Índice, memória, sessões e skills ficam em `~/.kronos/`, fora do projeto. Dentro do projeto, `.kronos/` guarda só saídas longas e anexos e já cria o próprio `.gitignore`.

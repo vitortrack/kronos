@@ -126,8 +126,8 @@
     return html;
   }
 
-  const ALIEN =
-    '<svg class="alien" viewBox="0 0 16 16" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" fill="currentColor" d="M8 16L3.54223 12.3383C1.93278 11.0162 1 9.04287 1 6.96005C1 3.11612 4.15607 0 8 0C11.8439 0 15 3.11612 15 6.96005C15 9.04287 14.0672 11.0162 12.4578 12.3383L8 16ZM3 6H5C6.10457 6 7 6.89543 7 8V9L3 7.5V6ZM11 6C9.89543 6 9 6.89543 9 8V9L13 7.5V6H11Z"/></svg>';
+  const KRONOS =
+    '<svg class="kronos" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="1" width="12" height="1.6" rx="0.8" fill="currentColor"/><rect x="2" y="13.4" width="12" height="1.6" rx="0.8" fill="currentColor"/><path d="M3.6 2.6C3.6 5.6 6.8 6.9 6.8 8C6.8 9.1 3.6 10.4 3.6 13.4H12.4C12.4 10.4 9.2 9.1 9.2 8C9.2 6.9 12.4 5.6 12.4 2.6" stroke="currentColor" stroke-width="1.2"/><path d="M5.4 4.6H10.6L8 7.1Z" fill="currentColor"/><path d="M8 7.1V10.6" stroke="currentColor" stroke-width="0.7"/><path d="M4.9 12.7C5.5 11.2 6.8 10.6 8 10.6C9.2 10.6 10.5 11.2 11.1 12.7Z" fill="currentColor"/></svg>';
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   let words = ['Pensando'];
   let work = null;
@@ -136,6 +136,11 @@
   const seconds = (w) => Math.max(1, Math.round((Date.now() - w.started) / 1000));
   const toolCount = (w) => (w.tools ? ` · ${w.tools} ${w.tools === 1 ? 'ferramenta' : 'ferramentas'}` : '');
   const compact = (n) => n.toLocaleString('pt-BR', { notation: 'compact', maximumFractionDigits: 1 });
+
+  messages.addEventListener('click', (e) => {
+    const io = e.target.closest('.io');
+    if (io && !e.target.closest('a') && !getSelection()?.toString()) io.classList.toggle('open');
+  });
 
   let stick = true;
   messages.addEventListener('scroll', () => {
@@ -193,7 +198,7 @@
     const el = document.createElement('div');
     el.className = 'timeline';
     append(el);
-    working.innerHTML = `${ALIEN}<span class="verb"></span><span class="meta"></span>`;
+    working.innerHTML = `${KRONOS}<span class="verb"></span><span class="meta"></span>`;
     working.hidden = false;
     working.classList.remove('idle');
     work = {
@@ -362,17 +367,21 @@
         endThought();
         w.tools++;
         thinkingNow(false);
-        w.lastTool = add(`item tool${m.agent ? ' sub' : ''}`, `<div class="tool-head">${agentTag(m.agent)}<span class="tool-name">${esc(m.name)}</span> <span class="tool-args">${esc(m.args)}</span></div>`, w.body);
+        w.lastTool = add(`item tool running${m.agent ? ' sub' : ''}`, `<div class="tool-head">${agentTag(m.agent)}<span class="tool-name">${esc(m.name)}</span></div><div class="io"><div class="io-row"><span class="io-label">IN</span><pre>${esc(m.args)}</pre></div></div>`, w.body);
         break;
       }
       case 'observation': {
-        const lines = String(m.output).trim().split('\n');
-        const first = esc(lines[0].slice(0, 160));
-        const more = lines.length > 1 ? ` <span class="muted">(+${lines.length - 1} linhas)</span>` : '';
-        const details = document.createElement('details');
-        details.className = `obs ${m.ok ? 'ok' : 'fail'}${m.agent ? ' sub' : ''}`;
-        details.innerHTML = `<summary>${m.ok ? '✓' : '✗'} ${first}${more}</summary><pre><code>${linkRefs(esc(m.output))}</code></pre>`;
-        (work?.lastTool ?? target()).appendChild(details);
+        const tool = work?.lastTool;
+        const row = document.createElement('div');
+        row.className = 'io-row out';
+        row.innerHTML = `<span class="io-label">OUT</span><pre>${linkRefs(esc(String(m.output).trim()))}</pre>`;
+        if (tool) {
+          tool.classList.remove('running');
+          tool.classList.add(m.ok ? 'ok' : 'fail');
+          tool.querySelector('.io').appendChild(row);
+        } else {
+          add(`io${m.ok ? '' : ' fail'}${m.agent ? ' sub' : ''}`, '', target()).appendChild(row);
+        }
         if (work) thinkingNow(true);
         scroll();
         break;

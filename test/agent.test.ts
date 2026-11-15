@@ -56,7 +56,7 @@ const call = (name: string, input: Record<string, unknown>): StepResult => ({
 const answer = (text: string): StepResult => ({ text, toolCalls: [], stop: 'end', usage });
 
 function workspace(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'alien-test-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'kronos-test-'));
 }
 
 function config(root: string, overrides: Partial<Config> = {}): Config {
@@ -78,7 +78,7 @@ function config(root: string, overrides: Partial<Config> = {}): Config {
 }
 
 process.env.OLLAMA_HOST = 'http://127.0.0.1:9';
-process.env.ALIEN_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'alien-home-'));
+process.env.KRONOS_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'kronos-home-'));
 
 test('ReAct loop: act, observe an error, self-correct, and finish', async () => {
   const root = workspace();
@@ -88,7 +88,7 @@ test('ReAct loop: act, observe an error, self-correct, and finish', async () => 
     ({ results }) => {
       assert.equal(results.at(-1)![0]!.isError, true);
       assert.match(results.at(-1)![0]!.output, /not found/);
-      return call('edit_file', { path: 'src/app.txt', old_string: 'world', new_string: 'Alien' });
+      return call('edit_file', { path: 'src/app.txt', old_string: 'world', new_string: 'Kronos' });
     },
     () => answer('done'),
   ]);
@@ -97,7 +97,7 @@ test('ReAct loop: act, observe an error, self-correct, and finish', async () => 
   const out = await session.run('change greeting');
   ui.close();
   assert.equal(out, 'done');
-  assert.equal(fs.readFileSync(path.join(root, 'src/app.txt'), 'utf8'), 'hello Alien\n');
+  assert.equal(fs.readFileSync(path.join(root, 'src/app.txt'), 'utf8'), 'hello Kronos\n');
 });
 
 test('reflection: a reviewer rejection sends the agent back to work, then approval ends it', async () => {
@@ -144,16 +144,16 @@ test('memory: the episode is stored only when something ran after the last edit'
   }
 });
 
-test('ALIEN_SKIP_END switches off one end-of-task step for ablation runs', async () => {
+test('KRONOS_SKIP_END switches off one end-of-task step for ablation runs', async () => {
   const root = workspace();
   const ui = UI.create();
-  process.env.ALIEN_SKIP_END = 'verify,requirements';
+  process.env.KRONOS_SKIP_END = 'verify,requirements';
   try {
     const provider = new ScriptedProvider([() => call('write_file', { path: 'a.ts', content: 'export const a = 1;\n' }), () => answer('done')]);
     const out = await new Session(config(root), ui, () => provider).run('create a.ts');
     assert.equal(out, 'done');
   } finally {
-    delete process.env.ALIEN_SKIP_END;
+    delete process.env.KRONOS_SKIP_END;
     ui.close();
   }
 });
@@ -512,7 +512,7 @@ test('on a follow-up like "pode continuar", the reviewer and the requirements ch
   assert.match(goals[0]!, /escreva a = 2 em src\/a\.js/);
 });
 
-test('with reviewModel set, the review runs in the Alien engine as a critic on that model', async () => {
+test('with reviewModel set, the review runs in the Kronos engine as a critic on that model', async () => {
   const root = workspace();
   const main = new ScriptedProvider([() => call('write_file', { path: 'a.txt', content: 'v2' }), () => answer('feito'), () => answer('feito')]);
   const asked: (string | undefined)[] = [];
@@ -655,7 +655,7 @@ test('toolset per provider: Claude gets bash-only, Ollama models keep the predef
 
 test('skills: Claude-compatible SKILL.md discovery, loading on demand, and no tool when there are none', async () => {
   const { findSkills, frontmatter, readSkill } = await import('../src/skills.js');
-  process.env.ALIEN_USER_SKILLS = 'off';
+  process.env.KRONOS_USER_SKILLS = 'off';
   const root = workspace();
   const write = (f: string, c: string) => {
     fs.mkdirSync(path.dirname(path.join(root, f)), { recursive: true });
@@ -700,7 +700,7 @@ test('offload: a huge tool output is saved to a git-ignored file and the model g
     ]);
     await new Session(config(root), ui, () => provider).run('liste os números');
     const big = provider.results[0]![0]!.output;
-    const saved = /saved in (\.alien\/outputs\/\S+\.txt)/.exec(big)?.[1];
+    const saved = /saved in (\.kronos\/outputs\/\S+\.txt)/.exec(big)?.[1];
     assert.ok(saved, big.slice(3000, 3400));
     assert.ok(big.length < 7000);
     assert.match(big, /^1\n2\n3\n/);
@@ -722,7 +722,7 @@ test('offload: a huge tool output is saved to a git-ignored file and the model g
 });
 
 test('progressive tools: rare tools stay out of the prompt until load_tools or a skill that allows them', async () => {
-  process.env.ALIEN_USER_SKILLS = 'off';
+  process.env.KRONOS_USER_SKILLS = 'off';
   const root = workspace();
   fs.mkdirSync(path.join(root, '.claude/skills/docs-lookup'), { recursive: true });
   fs.writeFileSync(path.join(root, '.claude/skills/docs-lookup/SKILL.md'), '---\nname: docs-lookup\ndescription: Use when you need to save notes.\nallowed-tools: Remember, Bash\n---\nSave the note.\n');
@@ -821,8 +821,8 @@ test('report_conflict: without anyone to answer, a question before any edit is r
   ui.close();
 });
 
-const ts5 = process.env.ALIEN_TEST_TS5;
-test('edits that introduce type errors are reverted; unused names are only reported', { skip: !ts5 && 'set ALIEN_TEST_TS5 to a typescript@5 folder' }, async () => {
+const ts5 = process.env.KRONOS_TEST_TS5;
+test('edits that introduce type errors are reverted; unused names are only reported', { skip: !ts5 && 'set KRONOS_TEST_TS5 to a typescript@5 folder' }, async () => {
   const root = workspace();
   fs.mkdirSync(path.join(root, 'src'));
   fs.mkdirSync(path.join(root, 'node_modules'));
@@ -941,10 +941,10 @@ test('tool descriptions state the preconditions and consequences that caused rej
   assert.match(describe('bash'), /saved to a file/);
 });
 
-test('skill review: after a long task a separate call saves a class-level skill under Alien home; project skills stay read-only', async () => {
+test('skill review: after a long task a separate call saves a class-level skill under Kronos home; project skills stay read-only', async () => {
   const { managedSkillsDir, findSkills } = await import('../src/skills.js');
   const { saveProposal } = await import('../src/skill-review.js');
-  process.env.ALIEN_USER_SKILLS = 'on';
+  process.env.KRONOS_USER_SKILLS = 'on';
   const root = workspace();
   fs.mkdirSync(path.join(root, '.claude/skills/project-rule'), { recursive: true });
   fs.writeFileSync(path.join(root, '.claude/skills/project-rule/SKILL.md'), '---\nname: project-rule\ndescription: Project rule.\n---\nx');
@@ -981,7 +981,7 @@ test('skill review: after a long task a separate call saves a class-level skill 
     await quiet.reviewing;
     assert.equal(short.user.length, 1);
   } finally {
-    process.env.ALIEN_USER_SKILLS = 'off';
+    process.env.KRONOS_USER_SKILLS = 'off';
     ui.close();
   }
 });
@@ -1108,10 +1108,10 @@ test('scope check covers files edited in earlier messages of the same conversati
   try {
     const session = new Session(config(root, { maxSteps: 3 }), ui, () => provider);
     await session.run('ajuste a api');
-    process.env.ALIEN_SKIP_END = 'verify,requirements';
+    process.env.KRONOS_SKIP_END = 'verify,requirements';
     assert.equal(await session.run('pode continuar'), 'mantido: a tela quebra sem ele');
   } finally {
-    delete process.env.ALIEN_SKIP_END;
+    delete process.env.KRONOS_SKIP_END;
     ui.close();
   }
 });

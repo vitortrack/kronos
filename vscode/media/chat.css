@@ -196,10 +196,6 @@ a:hover {
   color: var(--vscode-foreground);
 }
 
-.tool-args {
-  font-family: var(--vscode-editor-font-family);
-}
-
 .sub {
   margin-left: 14px;
   opacity: 0.85;
@@ -215,35 +211,80 @@ a:hover {
   color: var(--vscode-badge-foreground);
 }
 
-details.obs {
+.io {
+  margin-top: 6px;
   font-family: var(--vscode-editor-font-family);
   font-size: 0.82em;
-  color: var(--vscode-descriptionForeground);
-  margin: 4px 0 0;
-  padding: 4px 8px;
   border: 1px solid var(--vscode-panel-border);
-  border-radius: 4px;
+  border-radius: 6px;
+  overflow: hidden;
   background: var(--vscode-editor-background);
 }
 
-details.obs summary {
+.io-row {
+  display: flex;
+  gap: 12px;
+  padding: 6px 10px;
+}
+
+.io-row + .io-row {
+  border-top: 1px solid var(--vscode-panel-border);
+}
+
+.io-label {
+  flex: none;
+  width: 2.6em;
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.7;
+}
+
+.io-row pre {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  background: none;
+  border-radius: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.io {
   cursor: pointer;
-  white-space: nowrap;
+}
+
+.io-row:not(.out) pre {
+  white-space: pre;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-details.obs.ok summary {
-  color: var(--vscode-testing-iconPassed, #3fb950);
+.io-row.out {
+  color: var(--vscode-descriptionForeground);
+  background: var(--vscode-textCodeBlock-background, rgba(127, 127, 127, 0.08));
 }
 
-details.obs.fail summary {
-  color: var(--vscode-errorForeground);
+.io-row.out pre {
+  max-height: 4.5em;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 50%, transparent);
+  mask-image: linear-gradient(to bottom, #000 50%, transparent);
 }
 
-details.obs pre {
-  max-height: 260px;
+.io.open .io-row:not(.out) pre {
+  white-space: pre-wrap;
+}
+
+.io.open .io-row.out pre {
+  max-height: 320px;
   overflow: auto;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+.io.fail .io-row.out,
+.item.tool.fail .io-row.out {
+  color: var(--vscode-errorForeground);
 }
 
 .timeline {
@@ -282,8 +323,19 @@ details.obs pre {
 }
 
 .item.tool::before {
-  background: var(--vscode-textLink-foreground);
   opacity: 0.9;
+}
+
+.item.tool.running::before {
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+.item.tool.ok::before {
+  background: var(--vscode-testing-iconPassed, #3fb950);
+}
+
+.item.tool.fail::before {
+  background: var(--vscode-errorForeground);
 }
 
 .item.notice.warn::before,
@@ -377,7 +429,7 @@ details.obs pre {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  #working .alien,
+  #working .kronos,
   #working .verb,
   .item.thinking.live::before,
   .item.thinking.live .label,
@@ -452,12 +504,17 @@ details.obs pre {
   display: none;
 }
 
-#working .alien {
+#working .kronos {
   width: 14px;
   height: 14px;
   flex: none;
-  color: var(--vscode-charts-orange);
-  animation: blink 1s steps(1) infinite;
+  color: var(--vscode-charts-yellow);
+  animation: flip 2s ease-in-out infinite;
+}
+
+@keyframes flip {
+  0%, 70% { transform: rotate(0deg); }
+  100% { transform: rotate(180deg); }
 }
 
 #working .verb {

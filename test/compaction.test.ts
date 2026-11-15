@@ -72,11 +72,11 @@ test('an elided output that was saved points to its file instead of asking to ru
   provider.addUser('task');
   for (let i = 0; i < 21; i++) {
     const r = await provider.step(req);
-    provider.addToolResults(r.toolCalls.map((c) => ({ id: c.id, name: c.name, output: `out ${i} ${'x'.repeat(2000)}`, isError: false, ...(i === 0 ? { savedAs: '.alien/outputs/s/bash-0.txt' } : {}) })));
+    provider.addToolResults(r.toolCalls.map((c) => ({ id: c.id, name: c.name, output: `out ${i} ${'x'.repeat(2000)}`, isError: false, ...(i === 0 ? { savedAs: '.kronos/outputs/s/bash-0.txt' } : {}) })));
   }
   await provider.step(req);
   const tools = seen.chats.at(-1)!.filter((m) => m.role === 'tool');
-  assert.match(tools[0]!.content, /full output is saved in \.alien\/outputs\/s\/bash-0\.txt/);
+  assert.match(tools[0]!.content, /full output is saved in \.kronos\/outputs\/s\/bash-0\.txt/);
   assert.match(tools[1]!.content, /run the tool again/);
   assert.ok(seen.chats.at(-1)!.every((m) => !('saved' in m)), 'the saved path is internal, not an Ollama field');
 });

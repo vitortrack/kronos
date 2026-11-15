@@ -7,7 +7,7 @@ import { findSkills, type Skill } from './skills.js';
 import { reviewSkills, type ReviewInput } from './skill-review.js';
 import type { Role } from './prompts.js';
 import { AnthropicProvider, type Effort } from './providers/anthropic.js';
-import { alienHome } from './paths.js';
+import { kronosHome } from './paths.js';
 import { OllamaProvider } from './providers/ollama.js';
 import { OpenAICompatProvider } from './providers/openai.js';
 import { CodeIndex, Embedder } from './rag.js';
@@ -109,7 +109,7 @@ export class Session {
   }
 
   static defaultLogDir(): string {
-    return path.join(alienHome(), 'sessions');
+    return path.join(kronosHome(), 'sessions');
   }
 
   get signal(): AbortSignal {
@@ -194,7 +194,7 @@ export class Session {
   }
 
   reviewSkills(input: Omit<ReviewInput, 'turns'>): void {
-    if (process.env.ALIEN_USER_SKILLS === 'off') return;
+    if (process.env.KRONOS_USER_SKILLS === 'off') return;
     const signal = this.signal;
     const turns = [...this.turns];
     this.reviewing = this.reviewing

@@ -7,7 +7,7 @@ import type { Skill } from './skills.js';
 
 export type Role = 'main' | 'worker' | 'explorer' | 'critic';
 
-const CORE = `You are Alien, an autonomous software engineer working directly in the user's workspace. Finish the task: make the change, check it, and report.
+const CORE = `You are Kronos, an autonomous software engineer working directly in the user's workspace. Finish the task: make the change, check it, and report.
 
 <default_to_action>
 By default, implement changes rather than only suggesting them. If the user's intent is unclear, infer the most useful likely action and proceed, using tools to discover any missing details instead of guessing.
@@ -115,7 +115,7 @@ function gitInfo(root: string): string {
 }
 
 export function projectDocs(root: string): string {
-  return ['ALIEN.md', 'AGENTS.md', 'CLAUDE.md', '.claude/CLAUDE.md']
+  return ['KRONOS.md', 'AGENTS.md', 'CLAUDE.md', '.claude/CLAUDE.md']
     .map((name) => ({ name, content: readIfExists(path.join(root, name)) }))
     .filter((d) => d.content)
     .map((d) => `<file name="${d.name}">\n${d.content}\n</file>`)

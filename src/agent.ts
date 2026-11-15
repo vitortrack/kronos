@@ -56,7 +56,7 @@ const readIfExists = (file: string): string | null => {
 const isDocFile = (f: string): boolean => /\.(md|mdx|txt|rst)$/i.test(f);
 
 const MAX_JUDGE_REJECTIONS = 2;
-const skippedEndSteps = (): Set<string> => new Set((process.env.ALIEN_SKIP_END ?? '').split(',').map((s) => s.trim()));
+const skippedEndSteps = (): Set<string> => new Set((process.env.KRONOS_SKIP_END ?? '').split(',').map((s) => s.trim()));
 
 export class Agent {
   private readonly provider: Provider;

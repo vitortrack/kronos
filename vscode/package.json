@@ -1,13 +1,13 @@
 {
-  "name": "alien",
-  "displayName": "Alien — Agente de Código",
+  "name": "kronos",
+  "displayName": "Kronos — Agente de Código",
   "description": "Agente de código autônomo em formato de chat: ReAct, planejamento, revisão independente, multiagente, RAG e memória — local com Ollama ou com Claude.",
   "version": "0.1.29",
   "publisher": "vitortrack",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/vitortrack/alien.git",
+    "url": "https://github.com/vitortrack/kronos.git",
     "directory": "vscode"
   },
   "icon": "media/icon.png",
@@ -24,45 +24,45 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "alien",
-          "title": "Alien",
+          "id": "kronos",
+          "title": "Kronos",
           "icon": "media/icon.svg"
         }
       ]
     },
     "views": {
-      "alien": [
+      "kronos": [
         {
           "type": "webview",
-          "id": "alien.chat",
+          "id": "kronos.chat",
           "name": "Chat"
         }
       ]
     },
     "commands": [
       {
-        "command": "alien.newChat",
-        "title": "Alien: Nova conversa",
+        "command": "kronos.newChat",
+        "title": "Kronos: Nova conversa",
         "icon": "$(add)"
       },
       {
-        "command": "alien.focus",
-        "title": "Alien: Abrir chat"
+        "command": "kronos.focus",
+        "title": "Kronos: Abrir chat"
       }
     ],
     "menus": {
       "view/title": [
         {
-          "command": "alien.newChat",
-          "when": "view == alien.chat",
+          "command": "kronos.newChat",
+          "when": "view == kronos.chat",
           "group": "navigation"
         }
       ]
     },
     "configuration": {
-      "title": "Alien",
+      "title": "Kronos",
       "properties": {
-        "alien.provider": {
+        "kronos.provider": {
           "type": "string",
           "enum": [
             "auto",
@@ -73,12 +73,12 @@
           "default": "auto",
           "description": "Provedor do modelo. auto = Claude se houver ANTHROPIC_API_KEY, senão Ollama. openai = API compatível com OpenAI (OpenRouter por padrão, chave em OPENROUTER_API_KEY)."
         },
-        "alien.model": {
+        "kronos.model": {
           "type": "string",
           "default": "",
           "description": "Modelo de chat. Vazio = glm-5.3-flash:cloud (Ollama) ou claude-opus-5-5 (Claude)."
         },
-        "alien.mode": {
+        "kronos.mode": {
           "type": "string",
           "enum": [
             "ask",
@@ -93,32 +93,32 @@
           ],
           "description": "Permissões do agente."
         },
-        "alien.lang": {
+        "kronos.lang": {
           "type": "string",
           "default": "pt-BR",
           "description": "Idioma das respostas: pt-BR, en, es, fr, de, it ou auto (o da pergunta)."
         },
-        "alien.review": {
+        "kronos.review": {
           "type": "boolean",
           "default": false,
           "description": "Revisão extra por um agente crítico quando há alterações. Desligada por padrão: nas medições deu o mesmo acerto com 19–38% mais tokens; a checagem de escopo e o portão de verificação continuam sempre ativos."
         },
-        "alien.reviewModel": {
+        "kronos.reviewModel": {
           "type": "string",
           "default": "",
-          "description": "Modelo que revisa o trabalho ao final, como agente crítico do motor Alien, só leitura (ex.: um modelo maior do Ollama; claude-* exige ANTHROPIC_API_KEY). Preenchido, liga a revisão; a tarefa continua no modelo escolhido no chat."
+          "description": "Modelo que revisa o trabalho ao final, como agente crítico do motor Kronos, só leitura (ex.: um modelo maior do Ollama; claude-* exige ANTHROPIC_API_KEY). Preenchido, liga a revisão; a tarefa continua no modelo escolhido no chat."
         },
-        "alien.maxSteps": {
+        "kronos.maxSteps": {
           "type": "number",
           "default": 0,
           "description": "Limite de passos por mensagem. 0 = sem limite: o agente só para quando concluir ou quando você clicar em Parar."
         },
-        "alien.embedModel": {
+        "kronos.embedModel": {
           "type": "string",
           "default": "qwen3-embedding:0.6b",
           "description": "Modelo de embedding do Ollama para RAG e memória."
         },
-        "alien.ollamaHost": {
+        "kronos.ollamaHost": {
           "type": "string",
           "default": "http://localhost:11434",
           "description": "Endereço do Ollama."
@@ -130,7 +130,7 @@
     "vscode:prepublish": "node build.mjs",
     "build": "node build.mjs",
     "check": "tsc -p tsconfig.json",
-    "package": "vsce package --target linux-x64 --baseImagesUrl https://github.com/vitortrack/alien/raw/HEAD/vscode"
+    "package": "vsce package --target linux-x64 --baseImagesUrl https://github.com/vitortrack/kronos/raw/HEAD/vscode"
   },
   "dependencies": {
     "esbuild": "0.28.2"

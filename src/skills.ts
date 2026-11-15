@@ -1,13 +1,13 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { alienHome } from './paths.js';
+import { kronosHome } from './paths.js';
 
 export type Skill = { name: string; description: string; dir: string; tools: string[] };
 
 const MAX_DESCRIPTION = 300;
 
-export const managedSkillsDir = (): string => path.join(alienHome(), 'skills');
+export const managedSkillsDir = (): string => path.join(kronosHome(), 'skills');
 
 export function frontmatter(text: string): { fields: Record<string, string>; body: string } {
   const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(text);
@@ -59,7 +59,7 @@ function pluginSkills(): Array<{ dir: string; prefix: string }> {
 
 function skillCandidates(root: string): Array<{ dir: string; prefix: string }> {
   const bases = [path.join(root, '.claude', 'skills'), path.join(root, '.agents', 'skills')];
-  const user = process.env.ALIEN_USER_SKILLS === 'off' ? [] : [path.join(os.homedir(), '.claude', 'skills'), managedSkillsDir()];
+  const user = process.env.KRONOS_USER_SKILLS === 'off' ? [] : [path.join(os.homedir(), '.claude', 'skills'), managedSkillsDir()];
   return [...[...bases, ...user].flatMap((base) => subdirs(base).map((dir) => ({ dir, prefix: '' }))), ...(user.length ? pluginSkills() : [])];
 }
 

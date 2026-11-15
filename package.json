@@ -1,10 +1,10 @@
 {
-  "name": "alien",
+  "name": "kronos",
   "version": "0.1.0",
   "description": "Agente de código autônomo (ReAct) com planejamento, ferramentas, reflexão e orquestração multiagente — roda local com Ollama ou com Claude.",
   "type": "module",
   "bin": {
-    "alien": "dist/index.js"
+    "kronos": "dist/index.js"
   },
   "files": [
     "dist"
@@ -25,7 +25,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/vitortrack/alien.git"
+    "url": "https://github.com/vitortrack/kronos.git"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.6.0",

@@ -61,7 +61,7 @@ export async function workspaceDiff(root: string): Promise<string | null> {
   }
 }
 
-const INSTRUCTION_FILES = ['AGENTS.md', 'CLAUDE.md', 'ALIEN.md'];
+const INSTRUCTION_FILES = ['AGENTS.md', 'CLAUDE.md', 'KRONOS.md'];
 const MAX_INSTRUCTIONS = 8_000;
 
 export async function nestedInstructions(root: string, file: string, seen: Set<string>): Promise<string> {

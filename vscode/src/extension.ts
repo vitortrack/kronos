@@ -89,7 +89,7 @@ class WebviewUI implements AgentUI {
 }
 
 function readConfig(root: string): Config {
-  const c = vscode.workspace.getConfiguration('alien');
+  const c = vscode.workspace.getConfiguration('kronos');
   const chosen = c.get<string>('provider', 'auto');
   const provider: ProviderName = chosen === 'ollama' || chosen === 'anthropic' || chosen === 'openai' ? chosen : hasAnthropicKey() ? 'anthropic' : 'ollama';
   process.env.OLLAMA_HOST = c.get<string>('ollamaHost', 'http://localhost:11434');
@@ -111,14 +111,14 @@ function readConfig(root: string): Config {
   };
 }
 
-const OPEN_SESSION = 'alien.openSession';
+const OPEN_SESSION = 'kronos.openSession';
 
 const statusText = (cfg: Config): string => `${cfg.provider} · ${cfg.model} · ${cfg.mode}`;
 
 type Attachment = { name: string; mime: string; data: string };
 
 function saveAttachments(root: string, list: Attachment[]): { lines: string[]; images: Image[] } {
-  const dir = path.join(root, '.alien', 'attachments');
+  const dir = path.join(root, '.kronos', 'attachments');
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, '.gitignore'), '*\n');
   const lines = list.map((a) => {
@@ -187,14 +187,14 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="stylesheet" href="${style}">
-<title>Alien</title>
+<title>Kronos</title>
 </head>
 <body>
 <div id="status"></div>
 <div id="plan" hidden></div>
 <main id="messages">
   <div class="welcome">
-    <h2>Alien</h2>
+    <h2>Kronos</h2>
     <p>Pergunte sobre o código ou peça uma alteração. Ele investiga, altera, verifica e passa por um revisor independente.</p>
     <p class="hint">Enter envia · Shift+Enter quebra linha · referências <code>arquivo:linha</code> abrem no editor</p>
   </div>
@@ -241,7 +241,7 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
   private ensureSession(): Session | null {
     const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!root) {
-      this.post({ type: 'error', message: 'Abra uma pasta no VS Code para o Alien trabalhar nela.' });
+      this.post({ type: 'error', message: 'Abra uma pasta no VS Code para o Kronos trabalhar nela.' });
       return null;
     }
     const cfg = readConfig(root);
@@ -296,7 +296,7 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
   private async setModel(model: string): Promise<void> {
     const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!model || !root || this.session?.busy) return;
-    const config = vscode.workspace.getConfiguration('alien');
+    const config = vscode.workspace.getConfiguration('kronos');
     const provider: ProviderName = CLAUDE_MODELS.includes(model) ? 'anthropic' : OPENROUTER_MODELS.includes(model) ? 'openai' : 'ollama';
     if (readConfig(root).provider !== provider) await config.update('provider', provider, vscode.ConfigurationTarget.Global);
     await config.update('model', model, vscode.ConfigurationTarget.Global);
@@ -372,7 +372,7 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
       const matches = await vscode.workspace.findFiles(`**/${file}`, '**/node_modules/**', 1);
       const found = matches[0];
       if (!found) {
-        void vscode.window.showWarningMessage(`Alien: arquivo ${file} não encontrado no workspace.`);
+        void vscode.window.showWarningMessage(`Kronos: arquivo ${file} não encontrado no workspace.`);
         return;
       }
       const doc = await vscode.workspace.openTextDocument(found);
@@ -385,9 +385,9 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
 export function activate(context: vscode.ExtensionContext): void {
   const provider = new ChatViewProvider(context.extensionUri, context.workspaceState);
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider('alien.chat', provider, { webviewOptions: { retainContextWhenHidden: true } }),
-    vscode.commands.registerCommand('alien.newChat', () => provider.newChat()),
-    vscode.commands.registerCommand('alien.focus', () => vscode.commands.executeCommand('alien.chat.focus')),
+    vscode.window.registerWebviewViewProvider('kronos.chat', provider, { webviewOptions: { retainContextWhenHidden: true } }),
+    vscode.commands.registerCommand('kronos.newChat', () => provider.newChat()),
+    vscode.commands.registerCommand('kronos.focus', () => vscode.commands.executeCommand('kronos.chat.focus')),
   );
 }
 
