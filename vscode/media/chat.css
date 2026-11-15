@@ -509,12 +509,7 @@ a:hover {
   height: 14px;
   flex: none;
   color: var(--vscode-charts-yellow);
-  animation: flip 2s ease-in-out infinite;
-}
-
-@keyframes flip {
-  0%, 70% { transform: rotate(0deg); }
-  100% { transform: rotate(180deg); }
+  animation: pulse 1.6s ease-in-out infinite;
 }
 
 #working .verb {

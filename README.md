@@ -58,7 +58,7 @@ OpenRouter: exporte `OPENROUTER_API_KEY` e rode com `-p openai` (modelo padrão 
 
 ## Extensão do VS Code
 
-Chat do Kronos na barra lateral (ícone da ampulheta), com o mesmo núcleo do CLI.
+Chat do Kronos na barra lateral (ícone do relógio), com o mesmo núcleo do CLI.
 
 Instale pelo painel **Extensões** do VS Code, buscando **Kronos — Agente de Código** — o [Guia passo a passo](#guia-passo-a-passo-vs-code) mostra cada etapa, inclusive no Windows. Ou gere o pacote a partir do código:
 
@@ -144,7 +144,7 @@ Abra as configurações com `Ctrl+,` e busque **kronos**. No Windows, mude na ab
 
 ### 7. Usar o chat
 
-Clique no **ícone da ampulheta** na barra lateral, escreva a pergunta ou a tarefa e clique em **Enviar**. Referências `arquivo:linha` nas respostas abrem o arquivo na linha. O seletor ao lado do *Enviar* troca o modelo entre os instalados no Ollama.
+Clique no **ícone do relógio** na barra lateral, escreva a pergunta ou a tarefa e clique em **Enviar**. Referências `arquivo:linha` nas respostas abrem o arquivo na linha. O seletor ao lado do *Enviar* troca o modelo entre os instalados no Ollama.
 
 ![Chat do Kronos com uma pergunta, a resposta e o seletor de modelo](vscode/media/guide/07-chat.png)
 

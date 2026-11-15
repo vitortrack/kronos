@@ -127,7 +127,7 @@
   }
 
   const KRONOS =
-    '<svg class="kronos" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="1" width="12" height="1.6" rx="0.8" fill="currentColor"/><rect x="2" y="13.4" width="12" height="1.6" rx="0.8" fill="currentColor"/><path d="M3.6 2.6C3.6 5.6 6.8 6.9 6.8 8C6.8 9.1 3.6 10.4 3.6 13.4H12.4C12.4 10.4 9.2 9.1 9.2 8C9.2 6.9 12.4 5.6 12.4 2.6" stroke="currentColor" stroke-width="1.2"/><path d="M5.4 4.6H10.6L8 7.1Z" fill="currentColor"/><path d="M8 7.1V10.6" stroke="currentColor" stroke-width="0.7"/><path d="M4.9 12.7C5.5 11.2 6.8 10.6 8 10.6C9.2 10.6 10.5 11.2 11.1 12.7Z" fill="currentColor"/></svg>';
+    '<svg class="kronos" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M9 6.5V17.5M9 12L15 7M9 12L15 17"/></svg>';
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   let words = ['Pensando'];
   let work = null;
