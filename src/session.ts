@@ -9,6 +9,7 @@ import type { Role } from './prompts.js';
 import { AnthropicProvider, type Effort } from './providers/anthropic.js';
 import { alienHome } from './paths.js';
 import { OllamaProvider } from './providers/ollama.js';
+import { OpenAICompatProvider } from './providers/openai.js';
 import { CodeIndex, Embedder } from './rag.js';
 import { workspaceDiff } from './scope.js';
 import { newSessionId, SessionStore, type SavedSession, type Turn } from './sessions.js';
@@ -16,11 +17,12 @@ import { allowsTestEdits, clip, type Mode, type PlanItem, type ToolContext } fro
 import type { Provider, Usage, Image } from './types.js';
 import type { AgentUI } from './agent-ui.js';
 
-export type ProviderName = 'ollama' | 'anthropic';
+export type ProviderName = 'ollama' | 'anthropic' | 'openai';
 
 export const DEFAULT_MODEL: Record<ProviderName, string> = {
   ollama: 'glm-5.3-flash:cloud',
   anthropic: 'claude-opus-5-5',
+  openai: 'qwen/qwen3-coder-next',
 };
 
 export const DEFAULT_EMBED_MODEL = 'qwen3-embedding:0.6b';
@@ -64,7 +66,8 @@ function defaultFactory(cfg: Config): ProviderFactory {
   return (model) => {
     const name = model ?? cfg.model;
     const anthropic = model ? name.startsWith('claude-') : cfg.provider === 'anthropic';
-    return anthropic ? new AnthropicProvider(name, cfg.effort) : new OllamaProvider(name, cfg.numCtx);
+    if (anthropic) return new AnthropicProvider(name, cfg.effort);
+    return cfg.provider === 'openai' ? new OpenAICompatProvider(name) : new OllamaProvider(name, cfg.numCtx);
   };
 }
 

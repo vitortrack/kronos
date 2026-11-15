@@ -24,6 +24,7 @@ O mesmo núcleo roda no CLI e na extensão do VS Code, então os requisitos são
 - **Um modelo**, de uma destas formas:
   - **Ollama** instalado e rodando em `http://localhost:11434`. Para outro endereço, use `OLLAMA_HOST` no CLI ou *Settings → Alien → Ollama Host* na extensão. O modelo padrão, `glm-5.3-flash:cloud`, roda na nuvem do Ollama: é preciso entrar na conta com `ollama signin`. Modelos locais (`-m qwen3:8b`, por exemplo) não precisam de conta, só de `ollama pull`.
   - **Ou Claude**, com `ANTHROPIC_API_KEY` no ambiente. Na extensão, a variável precisa existir no ambiente em que o VS Code foi aberto.
+  - **Ou uma API compatível com OpenAI** (OpenRouter por padrão), com `OPENROUTER_API_KEY` no ambiente e `-p openai`. O modelo padrão é `qwen/qwen3-coder-next`; outro endereço vai em `OPENAI_BASE_URL`.
 - **Linux ou macOS, com `bash`, `git`, `grep` e `find` no PATH** (os dois já trazem). No **Windows**, o Alien roda dentro do WSL: veja o [Guia passo a passo](#guia-passo-a-passo-vs-code).
 
 O agente roda no laço próprio do Alien, com o modelo configurado — Ollama ou Claude (este pela API, com `ANTHROPIC_API_KEY`). O modo multiagente (`--orchestrate`), as checagens de pronto (`--gate`) e a reescrita de harness (`src/rhi.ts`) usam esse mesmo modelo, por meio de um agente só de leitura que devolve as decisões em JSON validado.
@@ -52,6 +53,8 @@ ollama pull qwen3-embedding:0.6b  # embeddings para RAG e memória vetorial (mel
 ```
 
 Claude: exporte `ANTHROPIC_API_KEY` e o Alien passa a usar `claude-opus-5-5` (ou force com `-p anthropic`).
+
+OpenRouter: exporte `OPENROUTER_API_KEY` e rode com `-p openai` (modelo padrão `qwen/qwen3-coder-next`; outro com `-m`).
 
 ## Extensão do VS Code
 
@@ -124,6 +127,7 @@ Outras formas de ter o modelo:
   ```
   e rode `wsl --shutdown` no PowerShell. Guia oficial: [Rede espelhada do WSL](https://learn.microsoft.com/pt-br/windows/wsl/networking#mirrored-mode-networking). Sem isso, troque o *Ollama Host* do passo 6 pelo IP do Windows.
 - **Claude**, em vez do Ollama: exporte `ANTHROPIC_API_KEY` no `~/.bashrc` e reabra a janela do VS Code (no Windows, a janela conectada ao WSL).
+- **OpenRouter**: exporte `OPENROUTER_API_KEY` no `~/.bashrc` e reabra a janela do VS Code; `qwen/qwen3-coder-next` aparece no seletor de modelos do chat.
 
 ### 6. Conferir as configurações
 
@@ -131,8 +135,8 @@ Abra as configurações com `Ctrl+,` e busque **alien**. No Windows, mude na aba
 
 | Configuração | Quando mudar |
 |---|---|
-| **Provider** | `auto` usa o Claude se houver `ANTHROPIC_API_KEY`, senão o Ollama |
-| **Model** | vazio = `glm-5.3-flash:cloud` (Ollama) ou `claude-opus-5-5` (Claude) |
+| **Provider** | `auto` usa o Claude se houver `ANTHROPIC_API_KEY`, senão o Ollama; `openai` usa o OpenRouter (`OPENROUTER_API_KEY`) |
+| **Model** | vazio = `glm-5.3-flash:cloud` (Ollama), `claude-opus-5-5` (Claude) ou `qwen/qwen3-coder-next` (openai) |
 | **Mode** | `ask` pede confirmação para escrever e rodar comandos; `auto` só confirma comandos destrutivos; `read-only` nunca altera nada |
 | **Ollama Host** | só se o Ollama estiver em outro endereço (por exemplo no Windows, sem rede espelhada) |
 
@@ -161,7 +165,7 @@ alien -p anthropic --effort xhigh "investigue o vazamento de memória"
 
 | Opção | Descrição |
 |---|---|
-| `-p, --provider ollama\|anthropic` | provedor do modelo |
+| `-p, --provider ollama\|anthropic\|openai` | provedor do modelo |
 | `-m, --model <nome>` | modelo (`glm-5.3-flash:cloud`, `qwen3:8b`, `claude-opus-5-5`, …) |
 | `--mode ask\|auto\|read-only` | `ask` pede confirmação para escrita e `bash` (comandos só de leitura, como `ls`, `grep` e `find`, passam direto); `auto` só confirma comandos destrutivos; `read-only` bloqueia tudo que altera |
 | `-C, --cwd <dir>` | pasta de trabalho (o agente não acessa arquivos fora dela) |
@@ -220,7 +224,7 @@ A saída é Markdown renderizado no terminal (títulos, listas, negrito, blocos 
              │     └─ review (--review) ─▶ Agent (critic)│
              │  Orchestrator: planner → workers → critic │
              │  Memory (vetorial) · CodeIndex (RAG)      │
-             │  Provider: Ollama | Anthropic             │
+             │  Provider: Ollama | Anthropic | OpenAI    │
              │  Trace JSONL · tokens · custo · travas    │
              └───────────────────────────────────────────┘
 ```
@@ -298,7 +302,7 @@ src/
   skill-review.ts   revisão automática de skills
   rag.ts            embeddings, BM25, índice do código
   memory.ts         memória vetorial de longo prazo
-  providers/        ollama.ts · anthropic.ts
+  providers/        ollama.ts · anthropic.ts · openai.ts
   ui.ts             saída do terminal
 ```
 

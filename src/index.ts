@@ -20,8 +20,8 @@ Uso:
   alien [opções]               modo interativo
 
 Opções:
-  -p, --provider <ollama|anthropic>  padrão: anthropic com ANTHROPIC_API_KEY, senão ollama
-  -m, --model <nome>                 padrão: ${DEFAULT_MODEL.ollama} (ollama) · ${DEFAULT_MODEL.anthropic} (anthropic)
+  -p, --provider <ollama|anthropic|openai>  padrão: anthropic com ANTHROPIC_API_KEY, senão ollama; openai = API compatível (OpenRouter por padrão)
+  -m, --model <nome>                 padrão: ${DEFAULT_MODEL.ollama} (ollama) · ${DEFAULT_MODEL.anthropic} (anthropic) · ${DEFAULT_MODEL.openai} (openai)
       --mode <ask|auto|read-only>    permissão para escrita e bash (padrão: ask)
   -C, --cwd <dir>                    pasta de trabalho (padrão: a atual)
       --orchestrate                  contrato → fatias com portão → revisão
@@ -45,7 +45,7 @@ Opções:
       --fork                         com -c ou -r: continua numa cópia, sem alterar a original
   -h, --help
 
-Variáveis: OLLAMA_HOST, ANTHROPIC_API_KEY, ALIEN_MODEL, ALIEN_SANDBOX, ALIEN_EMBED_MODEL, ALIEN_LANG`;
+Variáveis: OLLAMA_HOST, ANTHROPIC_API_KEY, OPENROUTER_API_KEY, OPENAI_BASE_URL, ALIEN_MODEL, ALIEN_SANDBOX, ALIEN_EMBED_MODEL, ALIEN_LANG`;
 
 const COMMANDS = `Comandos:
   /plan                    mostra o plano atual
@@ -133,7 +133,7 @@ function parseConfig(): { cfg: Config; task: string; orchestrateTask: boolean; g
     process.exit(0);
   }
   const hasAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
-  const provider = oneOf(values.provider, ['ollama', 'anthropic'] as const, '--provider', hasAnthropicKey ? 'anthropic' : 'ollama');
+  const provider = oneOf(values.provider, ['ollama', 'anthropic', 'openai'] as const, '--provider', hasAnthropicKey ? 'anthropic' : 'ollama');
   const root = path.resolve(values.cwd ?? process.cwd());
   if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) fail(`a pasta "${root}" não existe.`);
   return {

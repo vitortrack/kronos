@@ -3,7 +3,7 @@ import type { Provider, StepRequest, StepResult, ToolCall, ToolResult, ToolSpec,
 
 type OllamaToolCall = { function: { name: string; arguments: Record<string, unknown> | string } };
 
-type OllamaMessage = {
+export type OllamaMessage = {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
   tool_calls?: OllamaToolCall[];
@@ -13,7 +13,7 @@ type OllamaMessage = {
   saved?: string;
 };
 
-type OllamaChunk = {
+export type OllamaChunk = {
   message?: { content?: string; thinking?: string; tool_calls?: OllamaToolCall[] };
   done?: boolean;
   done_reason?: string;
@@ -28,7 +28,7 @@ const ELIDE_BLOCK = 10;
 const ELIDE_OVER = 1500;
 const DEDUP_OVER = 200;
 const ARG_OVER = 1000;
-const CLOUD_CTX_CAP = 262_144;
+export const CLOUD_CTX_CAP = 262_144;
 const KEEP_RECENT = 8;
 const RECENT_READS = 5;
 const COMPACT_MAX_TOKENS = 150_000;
@@ -82,7 +82,7 @@ export class OllamaProvider implements Provider {
   private lastPromptTokens = 0;
 
   constructor(
-    private readonly model: string,
+    protected readonly model: string,
     private readonly numCtx: number,
     private readonly host = process.env.OLLAMA_HOST ?? 'http://localhost:11434',
   ) {}
@@ -180,7 +180,7 @@ export class OllamaProvider implements Provider {
     });
   }
 
-  private async post(body: object, signal: AbortSignal): Promise<Response> {
+  protected async post(body: object, signal: AbortSignal): Promise<Response> {
     let res: Response;
     try {
       res = await fetch(`${this.host}/api/chat`, {
@@ -205,7 +205,7 @@ export class OllamaProvider implements Provider {
     return res;
   }
 
-  private async *chunks(res: Response): AsyncGenerator<OllamaChunk> {
+  protected async *chunks(res: Response): AsyncGenerator<OllamaChunk> {
     if (!res.body) return;
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -224,7 +224,7 @@ export class OllamaProvider implements Provider {
     if (buffer.trim()) yield JSON.parse(buffer) as OllamaChunk;
   }
 
-  private async modelInfo(signal: AbortSignal): Promise<{ thinking: boolean; vision: boolean; ctx: number }> {
+  protected async modelInfo(signal: AbortSignal): Promise<{ thinking: boolean; vision: boolean; ctx: number }> {
     if (this.info) return this.info;
     try {
       const res = await fetch(`${this.host}/api/show`, {

@@ -91,7 +91,7 @@ class WebviewUI implements AgentUI {
 function readConfig(root: string): Config {
   const c = vscode.workspace.getConfiguration('alien');
   const chosen = c.get<string>('provider', 'auto');
-  const provider: ProviderName = chosen === 'ollama' || chosen === 'anthropic' ? chosen : hasAnthropicKey() ? 'anthropic' : 'ollama';
+  const provider: ProviderName = chosen === 'ollama' || chosen === 'anthropic' || chosen === 'openai' ? chosen : hasAnthropicKey() ? 'anthropic' : 'ollama';
   process.env.OLLAMA_HOST = c.get<string>('ollamaHost', 'http://localhost:11434');
   return {
     provider,
@@ -140,15 +140,16 @@ async function hasVision(model: string): Promise<boolean> {
 
 const hasAnthropicKey = (): boolean => Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
 const CLAUDE_MODELS = hasAnthropicKey() ? ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'] : [];
+const OPENROUTER_MODELS = process.env.OPENROUTER_API_KEY ? [DEFAULT_MODEL.openai] : [];
 
 async function localModels(current: string): Promise<string[]> {
   try {
     const res = await fetch(`${process.env.OLLAMA_HOST}/api/tags`);
     const body = (await res.json()) as { models?: { name: string; details?: { family?: string } }[] };
     const names = (body.models ?? []).filter((m) => !/embed/i.test(m.name) && !/bert/i.test(m.details?.family ?? '')).map((m) => m.name);
-    return [...new Set([current, ...names, ...CLAUDE_MODELS])].sort();
+    return [...new Set([current, ...names, ...CLAUDE_MODELS, ...OPENROUTER_MODELS])].sort();
   } catch {
-    return [...new Set([current, ...CLAUDE_MODELS])].sort();
+    return [...new Set([current, ...CLAUDE_MODELS, ...OPENROUTER_MODELS])].sort();
   }
 }
 
@@ -296,7 +297,7 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
     const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!model || !root || this.session?.busy) return;
     const config = vscode.workspace.getConfiguration('alien');
-    const provider: ProviderName = CLAUDE_MODELS.includes(model) ? 'anthropic' : 'ollama';
+    const provider: ProviderName = CLAUDE_MODELS.includes(model) ? 'anthropic' : OPENROUTER_MODELS.includes(model) ? 'openai' : 'ollama';
     if (readConfig(root).provider !== provider) await config.update('provider', provider, vscode.ConfigurationTarget.Global);
     await config.update('model', model, vscode.ConfigurationTarget.Global);
     if (this.session) this.ensureSession();

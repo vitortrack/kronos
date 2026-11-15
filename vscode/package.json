@@ -2,7 +2,7 @@
   "name": "alien",
   "displayName": "Alien — Agente de Código",
   "description": "Agente de código autônomo em formato de chat: ReAct, planejamento, revisão independente, multiagente, RAG e memória — local com Ollama ou com Claude.",
-  "version": "0.1.28",
+  "version": "0.1.29",
   "publisher": "vitortrack",
   "license": "MIT",
   "repository": {
@@ -67,10 +67,11 @@
           "enum": [
             "auto",
             "ollama",
-            "anthropic"
+            "anthropic",
+            "openai"
           ],
           "default": "auto",
-          "description": "Provedor do modelo. auto = Claude se houver ANTHROPIC_API_KEY, senão Ollama."
+          "description": "Provedor do modelo. auto = Claude se houver ANTHROPIC_API_KEY, senão Ollama. openai = API compatível com OpenAI (OpenRouter por padrão, chave em OPENROUTER_API_KEY)."
         },
         "alien.model": {
           "type": "string",
