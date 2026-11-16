@@ -291,15 +291,23 @@
       el.innerHTML = '<summary><span class="label">Pensando…</span><span class="count"></span></summary><div class="think-body"></div>';
       w.el.appendChild(el);
       w.think = { el, label: el.querySelector('.label'), count: el.querySelector('.count'), chars: 0, started: Date.now(), typer: typer(el.querySelector('.think-body'), markdown) };
+      w.lastThink = w.think;
     }
-    w.think.chars += delta.length;
-    w.think.count.textContent = ` · ${compact(Math.ceil(w.think.chars / 4))} tokens`;
+    countOutput(w, delta);
     w.think.typer.feed(delta);
+  }
+
+  function countOutput(w, generated) {
+    const t = w.lastThink;
+    if (!t) return;
+    t.chars += generated.length;
+    t.count.textContent = ` · ${compact(Math.ceil(t.chars / 4))} tokens`;
   }
 
   function textDelta(delta) {
     const w = startWork();
     endThinking();
+    countOutput(w, delta);
     if (!w.text) {
       const el = add('item text', '', w.el);
       w.text = { el, raw: '', typer: typer(el, markdown) };
@@ -355,8 +363,7 @@
         thinkingNow(false);
         break;
       case 'thinking':
-        if (m.delta) thinkingDelta(m.delta);
-        else startWork();
+        thinkingDelta(m.delta);
         thinkingNow(true);
         break;
       case 'tokens':
@@ -365,6 +372,7 @@
       case 'tool': {
         const w = startWork();
         endThought();
+        if (!m.agent) countOutput(w, m.args);
         w.tools++;
         thinkingNow(false);
         w.lastTool = add(`item tool running${m.agent ? ' sub' : ''}`, `<div class="tool-head">${agentTag(m.agent)}<span class="tool-name">${esc(m.name)}</span></div><div class="io"><div class="io-row"><span class="io-label">IN</span><pre>${esc(m.args)}</pre></div></div>`, w.body);

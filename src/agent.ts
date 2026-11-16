@@ -187,6 +187,7 @@ export class Agent {
         }
         const early = new Map<ToolCall, Promise<ToolResult>>();
         if (this.session.overBudget()) return `Orçamento de ${cfg.tokenBudget.toLocaleString('pt-BR')} tokens atingido; parei para não gastar além do limite.`;
+        this.ui.thinking('');
         const r = await this.provider.step({
           system: this.system,
           task,

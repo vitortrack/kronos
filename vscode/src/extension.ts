@@ -30,7 +30,7 @@ class WebviewUI implements AgentUI {
   };
 
   readonly thinking = (delta: string): void => {
-    if (!this.agent && delta) this.post({ type: 'thinking', delta });
+    if (!this.agent) this.post({ type: 'thinking', delta });
   };
 
   tool(name: string, args: string): void {
