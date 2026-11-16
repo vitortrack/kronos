@@ -508,8 +508,22 @@ a:hover {
   width: 14px;
   height: 14px;
   flex: none;
-  color: var(--vscode-charts-yellow);
-  animation: pulse 1.6s ease-in-out infinite;
+  color: var(--vscode-charts-orange);
+  transform-origin: 50% 100%;
+  animation: flicker 0.9s ease-in-out infinite alternate;
+}
+
+@keyframes flicker {
+  0% {
+    transform: scale(1, 1) rotate(-3deg);
+  }
+  50% {
+    transform: scale(0.92, 1.08) rotate(2deg);
+    filter: drop-shadow(0 0 3px var(--vscode-charts-orange));
+  }
+  100% {
+    transform: scale(1.04, 0.95) rotate(-1deg);
+  }
 }
 
 #working .verb {
