@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from 'node:timers/promises';
 import { CLOUD_CTX_CAP, OllamaProvider, type OllamaChunk, type OllamaMessage } from './ollama.js';
 
 type Body = { model: string; stream: boolean; messages: OllamaMessage[]; tools?: unknown[] };
@@ -15,7 +16,7 @@ const HINTS: Record<number, string> = {
   401: 'chave inválida: confira OPENROUTER_API_KEY',
   402: 'créditos insuficientes: adicione créditos no provedor',
   404: 'modelo não encontrado: confira o nome, por exemplo qwen/qwen3-coder-next',
-  429: 'limite de requisições: aguarde e tente de novo',
+  429: 'limite de requisições persistiu após novas tentativas: aguarde e tente de novo',
 };
 
 export function toOpenAIMessages(messages: OllamaMessage[]): object[] {
@@ -56,6 +57,7 @@ export class OpenAICompatProvider extends OllamaProvider {
     model: string,
     private readonly baseUrl = process.env.OPENAI_BASE_URL ?? 'https://openrouter.ai/api/v1',
     private readonly apiKey = process.env.OPENROUTER_API_KEY ?? process.env.OPENAI_API_KEY ?? '',
+    private readonly retryDelaysMs = [2000, 5000, 15000, 30000],
   ) {
     super(model, CLOUD_CTX_CAP);
   }
@@ -67,9 +69,25 @@ export class OpenAICompatProvider extends OllamaProvider {
   protected override async post(body: object, signal: AbortSignal): Promise<Response> {
     if (!this.apiKey) throw new Error('Defina OPENROUTER_API_KEY (ou OPENAI_API_KEY) para usar o provedor openai.');
     const { stream, messages, tools } = body as Body;
-    let res: Response;
+    let res = await this.send({ stream, messages, tools }, signal);
+    for (const delay of this.retryDelaysMs) {
+      if (res.status !== 429) break;
+      await res.body?.cancel();
+      await sleep(delay, undefined, { signal });
+      res = await this.send({ stream, messages, tools }, signal);
+    }
+    if (!res.ok) {
+      const hint = HINTS[res.status];
+      throw new Error(`Provedor openai respondeu ${res.status}${hint ? ` (${hint})` : ''}: ${await res.text()}`);
+    }
+    if (stream) return res;
+    const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+    return Response.json({ message: { content: data.choices?.[0]?.message?.content ?? '' } });
+  }
+
+  private async send({ stream, messages, tools }: Omit<Body, 'model'>, signal: AbortSignal): Promise<Response> {
     try {
-      res = await fetch(`${this.baseUrl}/chat/completions`, {
+      return await fetch(`${this.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${this.apiKey}` },
         body: JSON.stringify({
@@ -85,13 +103,6 @@ export class OpenAICompatProvider extends OllamaProvider {
       if (signal.aborted) throw e;
       throw new Error(`Não foi possível conectar a ${this.baseUrl}. Confira a rede ou OPENAI_BASE_URL.`, { cause: e });
     }
-    if (!res.ok) {
-      const hint = HINTS[res.status];
-      throw new Error(`Provedor openai respondeu ${res.status}${hint ? ` (${hint})` : ''}: ${await res.text()}`);
-    }
-    if (stream) return res;
-    const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-    return Response.json({ message: { content: data.choices?.[0]?.message?.content ?? '' } });
   }
 
   protected override async *chunks(res: Response): AsyncGenerator<OllamaChunk> {

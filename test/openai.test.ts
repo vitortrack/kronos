@@ -55,3 +55,32 @@ test('a missing key fails with what to set instead of calling the provider', asy
   await assert.rejects(provider.step(req), /OPENROUTER_API_KEY/);
   assert.equal(sent.length, 0);
 });
+
+function rateLimitedThenOk(failures: number): { calls: number } {
+  const state = { calls: 0 };
+  stub();
+  const ok = globalThis.fetch;
+  globalThis.fetch = (async (...args: Parameters<typeof fetch>) => {
+    state.calls++;
+    if (state.calls <= failures) return new Response('{"error":{"code":429}}', { status: 429 });
+    return ok(...args);
+  }) as typeof fetch;
+  return state;
+}
+
+test('a 429 from the provider is retried and the step goes through once the limit frees up', async () => {
+  const state = rateLimitedThenOk(2);
+  const provider = new OpenAICompatProvider('qwen/qwen3-coder-next', 'https://router.test/v1', 'k', [0, 0, 0]);
+  provider.addUser('oi');
+  const r = await provider.step(req);
+  assert.equal(r.text, 'vou listar');
+  assert.equal(state.calls, 3);
+});
+
+test('a 429 that outlasts every retry fails with the rate-limit hint', async () => {
+  const state = rateLimitedThenOk(99);
+  const provider = new OpenAICompatProvider('qwen/qwen3-coder-next', 'https://router.test/v1', 'k', [0, 0]);
+  provider.addUser('oi');
+  await assert.rejects(provider.step(req), /429 \(limite de requisições persistiu/);
+  assert.equal(state.calls, 3);
+});
