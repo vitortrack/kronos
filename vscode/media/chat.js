@@ -454,6 +454,23 @@
         add('usage', `tokens na conversa: ${m.input.toLocaleString('pt-BR')} entrada · ${m.output.toLocaleString('pt-BR')} saída · ${cost}`);
         break;
       }
+      case 'usage-panel':
+        if (m.error) add('notice warn', esc(m.error));
+        if (m.bars.length) {
+          add(
+            'usage-panel',
+            m.bars
+              .map(
+                (b) =>
+                  `<div class="usage-row"><span>${esc(b.label)}</span><span>${b.percent}%</span></div>` +
+                  `<div class="usage-bar${b.percent >= 80 ? ' high' : ''}"><div style="width:${Math.min(100, b.percent)}%"></div></div>` +
+                  `<div class="muted">${esc(b.detail)}</div>` +
+                  (b.note ? `<div class="muted">${esc(b.note)}</div>` : ''),
+              )
+              .join(''),
+          );
+        }
+        break;
       case 'status':
         statusEl.textContent = m.text;
         break;

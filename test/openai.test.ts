@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { OpenAICompatProvider, openRouterBalance } from '../src/providers/openai.js';
+import { OpenAICompatProvider, openRouterUsage } from '../src/providers/openai.js';
 import type { StepRequest } from '../src/types.js';
 
 type Sent = { url: string; auth: string; body: { stream: boolean; messages: { role: string; content: string | null; tool_call_id?: string; tool_calls?: { id: string; function: { arguments: string } }[] }[] } };
@@ -99,28 +99,46 @@ test('the cost OpenRouter reports for a step comes back in its usage', async () 
   assert.deepEqual(r.usage, { input: 120, output: 7, cost: 0.0123 });
 });
 
-test('the balance shows key spend, key limit and account credits', async () => {
+function account(key: object | null, credits: object | null): string[] {
   const urls: string[] = [];
   globalThis.fetch = (async (url: string) => {
     urls.push(url);
-    if (url.endsWith('/key')) return Response.json({ data: { usage: 8.7, usage_daily: 0.5, usage_monthly: 8.7, limit: 50, limit_remaining: 41.3 } });
-    return Response.json({ data: { total_credits: 10, total_usage: 8.7 } });
+    const data = url.endsWith('/key') ? key : credits;
+    if (!data) return new Response('forbidden', { status: 403 });
+    return Response.json({ data });
   }) as typeof fetch;
-  const text = await openRouterBalance('https://router.test/v1', 'k');
+  return urls;
+}
+
+const monthly = { limit_usd: 50, spend_usd: 8.7, reset_interval: 'monthly', resets_at: '2026-12-01T00:00:00.000Z' };
+
+test('usage shows the key limit and account credits as percentages, with the pace of spending', async () => {
+  const urls = account({ usage_weekly: 7, effective_budget: monthly }, { total_credits: 20, total_usage: 8.8 });
+  const { bars, error } = await openRouterUsage('https://router.test/v1', 'k', new Date('2026-11-16T00:00:00.000Z'));
   assert.deepEqual(urls.sort(), ['https://router.test/v1/credits', 'https://router.test/v1/key']);
-  assert.equal(text, 'chave: hoje US$ 0.50 · mês US$ 8.70 · total US$ 8.70 · limite US$ 50.00 · restam US$ 41.30\nconta: comprados US$ 10.00 · gastos US$ 8.70 · saldo US$ 1.30');
+  assert.equal(error, undefined);
+  assert.deepEqual(bars, [
+    { label: 'Limite da chave (mês)', percent: 17, detail: 'US$ 8.70 de US$ 50.00 · renova 01/12', note: '50% do período já passou · no ritmo fecha em US$ 17.40' },
+    { label: 'Créditos da conta', percent: 44, detail: 'US$ 8.80 de US$ 20.00 · saldo US$ 11.20', note: 'no ritmo dos últimos 7 dias (US$ 1.00/dia) o saldo dura ~11 dias' },
+  ]);
 });
 
-test('a key without limit says so, and a refused credits call leaves only the key line', async () => {
-  globalThis.fetch = (async (url: string) => {
-    if (url.endsWith('/key')) return Response.json({ data: { usage: 1, usage_daily: 0, usage_monthly: 1, limit: null } });
-    return new Response('forbidden', { status: 403 });
+test('a pace that would pass the key limit is flagged', async () => {
+  account({ effective_budget: { ...monthly, spend_usd: 40 } }, null);
+  const { bars } = await openRouterUsage('https://router.test/v1', 'k', new Date('2026-11-16T00:00:00.000Z'));
+  assert.equal(bars[0]?.note, '50% do período já passou · no ritmo fecha em US$ 80.00 — acima do limite');
+});
+
+test('a key without limit and with no spend this week shows only the credits, without pace', async () => {
+  account({ usage_weekly: 0, effective_budget: null }, { total_credits: 20, total_usage: 5 });
+  const { bars } = await openRouterUsage('https://router.test/v1', 'k');
+  assert.deepEqual(bars, [{ label: 'Créditos da conta', percent: 25, detail: 'US$ 5.00 de US$ 20.00 · saldo US$ 15.00', note: '' }]);
+});
+
+test('usage explains what is missing when there is no key or no answer', async () => {
+  assert.match((await openRouterUsage('https://router.test/v1', '')).error ?? '', /OPENROUTER_API_KEY/);
+  globalThis.fetch = (async () => {
+    throw new Error('offline');
   }) as typeof fetch;
-  assert.equal(await openRouterBalance('https://router.test/v1', 'k'), 'chave: hoje US$ 0.00 · mês US$ 1.00 · total US$ 1.00 · sem limite');
-});
-
-test('the balance explains what is missing when there is no key or no answer', async () => {
-  assert.match(await openRouterBalance('https://router.test/v1', ''), /OPENROUTER_API_KEY/);
-  globalThis.fetch = (async () => { throw new Error('offline'); }) as typeof fetch;
-  assert.match(await openRouterBalance('https://router.test/v1', 'k'), /não respondeu/);
+  assert.match((await openRouterUsage('https://router.test/v1', 'k')).error ?? '', /não respondeu/);
 });

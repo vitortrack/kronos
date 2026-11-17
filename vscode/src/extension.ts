@@ -11,7 +11,7 @@ import { findSkills, skillCommand } from '../../src/skills.js';
 import { THINKING_WORDS } from '../../src/thinking-words.js';
 import type { Decision, Mode, PlanItem } from '../../src/tools.js';
 import type { Image, Usage } from '../../src/types.js';
-import { openRouterBalance } from '../../src/providers/openai.js';
+import { openRouterUsage } from '../../src/providers/openai.js';
 
 const USAGE_COMMAND = { name: 'usage', description: 'tokens e custo da conversa; no OpenRouter, gasto e saldo da conta' };
 
@@ -368,7 +368,7 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
   private async usage(session: Session): Promise<void> {
     this.post({ type: 'usage', input: session.usage.input, output: session.usage.output, cost: session.costUsd() });
     if (session.cfg.provider !== 'openai') return;
-    for (const message of (await openRouterBalance()).split('\n')) this.post({ type: 'info', message });
+    this.post({ type: 'usage-panel', ...(await openRouterUsage()) });
   }
 
   private async open(file: string, line: number): Promise<void> {

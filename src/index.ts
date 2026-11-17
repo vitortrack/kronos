@@ -9,7 +9,7 @@ import { gateFor } from './gate.js';
 import { agentJudge } from './judge.js';
 import { LANGUAGE_NAMES, languageName } from './prompts.js';
 import type { Effort } from './providers/anthropic.js';
-import { openRouterBalance } from './providers/openai.js';
+import { openRouterUsage } from './providers/openai.js';
 import { DEFAULT_EMBED_MODEL, DEFAULT_MODEL, Session, type Config } from './session.js';
 import type { Mode } from './tools.js';
 import { UI } from './ui.js';
@@ -327,7 +327,7 @@ async function main(): Promise<void> {
       }
       case '/usage':
         ui.usage(session.usage, session.costUsd());
-        if (session.cfg.provider === 'openai') ui.info(await openRouterBalance());
+        if (session.cfg.provider === 'openai') ui.usageBars(await openRouterUsage());
         break;
       case '/sessions': {
         const saved = session.sessions.list();

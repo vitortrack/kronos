@@ -136,30 +136,88 @@ export class OpenAICompatProvider extends OllamaProvider {
   }
 }
 
-type KeyInfo = { data?: { usage?: number; usage_daily?: number; usage_monthly?: number; limit?: number | null; limit_remaining?: number | null } };
+type Budget = { limit_usd?: number; spend_usd?: number; reset_interval?: string | null; resets_at?: string | null };
+type KeyInfo = { data?: { usage_weekly?: number; effective_budget?: Budget | null } };
 type Credits = { data?: { total_credits?: number; total_usage?: number } };
 
-const usd = (n: number): string => `US$ ${n.toFixed(2)}`;
+export interface UsageBar {
+  label: string;
+  percent: number;
+  detail: string;
+  note: string;
+}
 
-export async function openRouterBalance(
+export interface OpenRouterUsage {
+  bars: UsageBar[];
+  error?: string;
+}
+
+const DAY_MS = 86_400_000;
+
+const PERIOD_START: Record<string, (end: Date) => Date> = {
+  daily: (end) => new Date(end.getTime() - DAY_MS),
+  weekly: (end) => new Date(end.getTime() - 7 * DAY_MS),
+  monthly: (end) => {
+    const start = new Date(end);
+    start.setUTCMonth(start.getUTCMonth() - 1);
+    return start;
+  },
+};
+
+const PERIOD_LABEL: Record<string, string> = { daily: 'dia', weekly: 'semana', monthly: 'mês' };
+
+const usd = (n: number): string => `US$ ${n.toFixed(2)}`;
+const percentOf = (part: number, whole: number): number => Math.round((part / whole) * 100);
+const dayMonth = (d: Date): string => d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' });
+
+function keyBar(budget: Budget, now: Date): UsageBar | null {
+  if (!budget.limit_usd) return null;
+  const spend = budget.spend_usd ?? 0;
+  const interval = budget.reset_interval ?? '';
+  const bar: UsageBar = {
+    label: `Limite da chave (${PERIOD_LABEL[interval] ?? 'total'})`,
+    percent: percentOf(spend, budget.limit_usd),
+    detail: `${usd(spend)} de ${usd(budget.limit_usd)}`,
+    note: '',
+  };
+  const startOf = PERIOD_START[interval];
+  if (!startOf || !budget.resets_at) return bar;
+  const end = new Date(budget.resets_at);
+  const start = startOf(end);
+  bar.detail += ` · renova ${dayMonth(end)}`;
+  const elapsed = (now.getTime() - start.getTime()) / (end.getTime() - start.getTime());
+  if (elapsed <= 0) return bar;
+  const projected = spend / elapsed;
+  bar.note = `${percentOf(elapsed, 1)}% do período já passou · no ritmo fecha em ${usd(projected)}`;
+  if (projected > budget.limit_usd) bar.note += ' — acima do limite';
+  return bar;
+}
+
+function creditsBar(total: number, used: number, weekly: number): UsageBar {
+  const balance = total - used;
+  const bar: UsageBar = { label: 'Créditos da conta', percent: percentOf(used, total), detail: `${usd(used)} de ${usd(total)} · saldo ${usd(balance)}`, note: '' };
+  const perDay = weekly / 7;
+  if (perDay > 0) bar.note = `no ritmo dos últimos 7 dias (${usd(perDay)}/dia) o saldo dura ~${Math.floor(balance / perDay)} dias`;
+  return bar;
+}
+
+export async function openRouterUsage(
   baseUrl = process.env.OPENAI_BASE_URL ?? 'https://openrouter.ai/api/v1',
   apiKey = process.env.OPENROUTER_API_KEY ?? process.env.OPENAI_API_KEY ?? '',
-): Promise<string> {
-  if (!apiKey) return 'saldo indisponível: defina OPENROUTER_API_KEY';
+  now = new Date(),
+): Promise<OpenRouterUsage> {
+  if (!apiKey) return { bars: [], error: 'saldo indisponível: defina OPENROUTER_API_KEY' };
   const get = async <T>(path: string): Promise<T | null> => {
     const res = await fetch(`${baseUrl}${path}`, { headers: { authorization: `Bearer ${apiKey}` } }).catch(() => null);
-    return res?.ok ? ((await res.json()) as T) : null;
+    if (!res?.ok) return null;
+    return (await res.json()) as T;
   };
   const [key, credits] = await Promise.all([get<KeyInfo>('/key'), get<Credits>('/credits')]);
-  const lines: string[] = [];
-  const k = key?.data;
-  if (k) {
-    const limit = k.limit == null ? 'sem limite' : `limite ${usd(k.limit)} · restam ${usd(k.limit_remaining ?? 0)}`;
-    lines.push(`chave: hoje ${usd(k.usage_daily ?? 0)} · mês ${usd(k.usage_monthly ?? 0)} · total ${usd(k.usage ?? 0)} · ${limit}`);
-  }
+  const bars: UsageBar[] = [];
+  const keyLimit = key?.data?.effective_budget && keyBar(key.data.effective_budget, now);
+  if (keyLimit) bars.push(keyLimit);
   const c = credits?.data;
-  if (c?.total_credits !== undefined) {
-    lines.push(`conta: comprados ${usd(c.total_credits)} · gastos ${usd(c.total_usage ?? 0)} · saldo ${usd(c.total_credits - (c.total_usage ?? 0))}`);
-  }
-  return lines.join('\n') || 'saldo indisponível: o OpenRouter não respondeu';
+  if (c?.total_credits) bars.push(creditsBar(c.total_credits, c.total_usage ?? 0, key?.data?.usage_weekly ?? 0));
+  if (!bars.length) return { bars, error: 'saldo indisponível: o OpenRouter não respondeu' };
+  return { bars };
 }

@@ -491,6 +491,39 @@ a:hover {
   color: var(--vscode-descriptionForeground);
 }
 
+.usage-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  font-size: 0.85em;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 6px;
+}
+
+.usage-row {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-weight: 600;
+}
+
+.usage-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--vscode-input-background);
+}
+
+.usage-bar > div {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--vscode-progressBar-background);
+}
+
+.usage-bar.high > div {
+  background: var(--vscode-charts-orange);
+}
+
 #working {
   display: flex;
   align-items: center;

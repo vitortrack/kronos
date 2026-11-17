@@ -2,6 +2,7 @@ import readline from 'node:readline/promises';
 import { styleText } from 'node:util';
 import type { AgentUI } from './agent-ui.js';
 import { renderMarkdownLine, type MarkdownState } from './markdown.js';
+import type { OpenRouterUsage } from './providers/openai.js';
 import { randomThinkingWord } from './thinking-words.js';
 import type { Decision, PlanItem, PlanStatus } from './tools.js';
 import type { Usage } from './types.js';
@@ -134,6 +135,18 @@ export class UI implements AgentUI {
   usage(u: Usage, costUsd: number | null): void {
     const cost = costUsd === null ? 'custo desconhecido para este modelo' : costUsd === 0 ? 'custo US$ 0 (local)' : `~US$ ${costUsd.toFixed(4)}`;
     this.line(paint('gray', `tokens: ${u.input.toLocaleString('pt-BR')} entrada · ${u.output.toLocaleString('pt-BR')} saída · ${cost}`));
+  }
+
+  usageBars({ bars, error }: OpenRouterUsage): void {
+    if (error) this.warn(error);
+    for (const bar of bars) {
+      const filled = Math.min(20, Math.round(bar.percent / 5));
+      let color: 'blue' | 'yellow' = 'blue';
+      if (bar.percent >= 80) color = 'yellow';
+      this.line(`${bar.label}  ${paint(color, '█'.repeat(filled))}${paint('gray', '░'.repeat(20 - filled))} ${bar.percent}%`);
+      this.line(paint('gray', `  ${bar.detail}`));
+      if (bar.note) this.line(paint('gray', `  ${bar.note}`));
+    }
   }
 
   async confirm(question: string, signal: AbortSignal, alwaysLabel?: string): Promise<Decision> {
