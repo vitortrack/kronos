@@ -6,7 +6,8 @@ import { isJudged, orderedChecks } from './gate.js';
 import { agentJudge } from './judge.js';
 import type { Session } from './session.js';
 import { allTools, cleanPath, describeInput, offload, permit, suggestPath, toolLoader, type Tool, type ToolContext } from './tools.js';
-import type { Image, Provider, ToolCall, ToolResult } from './types.js';
+import type { ContextUse, Image, Provider, ToolCall, ToolResult } from './types.js';
+import { mcpHub } from './mcp.js';
 import type { AgentUI } from './agent-ui.js';
 import { validateInput } from './validate.js';
 import fs from 'node:fs';
@@ -97,6 +98,32 @@ export class Agent {
     });
   }
 
+  private mcpAttached = false;
+
+  private async attachMcp(): Promise<void> {
+    if (this.mcpAttached || this.session.cfg.tools) return;
+    this.mcpAttached = true;
+    const usable = (await mcpHub(this.session.cfg.root)).tools.filter(ROLE_TOOLS[this.role]);
+    if (!usable.length) return;
+    this.deferred.push(...usable);
+    const loader = toolLoader(this.deferred, (names) => this.enable(names));
+    const at = this.tools.findIndex((t) => t.name === 'load_tools');
+    if (at >= 0) this.tools[at] = loader;
+    else this.tools.push(loader);
+  }
+
+  get canCompact(): boolean {
+    return Boolean(this.provider.compactNow);
+  }
+
+  compactNow(signal: AbortSignal, focus?: string): Promise<boolean> {
+    return this.provider.compactNow?.(signal, focus) ?? Promise.resolve(false);
+  }
+
+  contextUse(): ContextUse | null {
+    return this.provider.contextUse?.() ?? null;
+  }
+
   private enable(names: string[]): void {
     for (const t of this.deferred) if (names.includes(t.name) && !this.tools.includes(t)) this.tools.push(t);
   }
@@ -160,6 +187,7 @@ export class Agent {
     this.changed = false;
     this.callCounts.clear();
     this.verifiedSinceEdit = true;
+    await this.attachMcp();
     this.provider.addUser(await this.withRecall(task, this.opening(task)), images);
     const gated = this.role === 'main' && Boolean(cfg.gate?.length);
     const request = this.role === 'main' ? [...this.session.turns.map((t) => t.task), task].join('\n\n') : task;

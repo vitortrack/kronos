@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Provider, StepRequest, StepResult, ToolCall, ToolResult, ToolSpec, Usage, Image } from '../types.js';
+import type { ContextUse, Provider, StepRequest, StepResult, ToolCall, ToolResult, ToolSpec, Usage, Image } from '../types.js';
 
 type OllamaToolCall = { function: { name: string; arguments: Record<string, unknown> | string } };
 
@@ -247,7 +247,17 @@ export class OllamaProvider implements Provider {
   }
 
 
-  private async compact(signal: AbortSignal, ctx: number, task: string | undefined, changedFiles: string[]): Promise<boolean> {
+  async compactNow(signal: AbortSignal, focus?: string): Promise<boolean> {
+    const { ctx } = await this.modelInfo(signal);
+    return this.compact(signal, ctx, undefined, [], focus);
+  }
+
+  contextUse(): ContextUse | null {
+    if (!this.info) return null;
+    return { used: this.lastPromptTokens, limit: this.info.ctx, compactAt: compactAt(this.info.ctx) };
+  }
+
+  private async compact(signal: AbortSignal, ctx: number, task: string | undefined, changedFiles: string[], focus?: string): Promise<boolean> {
     let cut = Math.max(0, this.history.length - KEEP_RECENT);
     while (cut > 0 && this.history[cut]?.role === 'tool') cut--;
     if (cut < 2) return false;
@@ -268,7 +278,9 @@ export class OllamaProvider implements Provider {
             content:
               'Write a checkpoint of this coding-agent work log so the agent can continue without the original messages. Use exactly these sections:\n' +
               '## Primary request (the user\'s words, verbatim when short)\n## Key decisions and constraints\n## Files and code (exact paths, what each contains or what was changed)\n## Errors and fixes\n## Current work (what was in progress)\n## Next step\n' +
-              'Preserve exact file paths, identifiers, commands and error strings. Be dense and factual; do not invent anything.\n\n' +
+              'Preserve exact file paths, identifiers, commands and error strings. Be dense and factual; do not invent anything.\n' +
+              (focus ? `The user asked this checkpoint to focus on: ${focus}\n` : '') +
+              '\n' +
               transcript,
           },
         ],

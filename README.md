@@ -189,7 +189,7 @@ kronos -p anthropic --effort xhigh "investigue o vazamento de memória"
 | `-r`, `--resume <id>` | retoma uma conversa salva |
 | `--fork` | com `-c` ou `-r`: continua numa cópia, sem alterar a original |
 
-Comandos no modo interativo: `/plan`, `/mode`, `/review on|off`, `/lang <idioma>`, `/traduzir [idioma]`, `/thinking on|off`, `/orchestrate <tarefa>`, `/index`, `/memory`, `/usage`, `/sessions`, `/resume <id>`, `/fork`, `/clear`, `/exit`. **Ctrl+C** interrompe a tarefa em andamento sem sair.
+Comandos no modo interativo: `/plan`, `/mode`, `/review on|off`, `/lang <idioma>`, `/traduzir [idioma]`, `/thinking on|off`, `/orchestrate <tarefa>`, `/index`, `/memory`, `/usage`, `/compact [foco]`, `/mcp`, `/plugins`, `/init`, `/sessions`, `/resume <id>`, `/fork`, `/clear`, `/exit`. Na extensão, `/usage`, `/compact`, `/clear`, `/mcp`, `/plugins` e `/init` aparecem no menu do `/`. **Ctrl+C** interrompe a tarefa em andamento sem sair.
 
 Cada conversa é salva ao fim de cada tarefa em `~/.kronos/projects/<projeto>/sessions/<id>.json` (histórico do agente, pedidos e respostas, plano e uso). A extensão do VS Code restaura a conversa aberta quando a janela recarrega; **Nova conversa** começa outra.
 
@@ -244,6 +244,10 @@ A saída é Markdown renderizado no terminal (títulos, listas, negrito, blocos 
 **RAG.** `semantic_search` indexa o código em trechos de 60 linhas (com sobreposição) e ranqueia combinando similaridade de embeddings (peso 0,8) e BM25 (0,2). O agente escreve a busca como pergunta + identificadores prováveis em inglês, o que funciona como expansão de query. O índice é incremental e fica em `~/.kronos/projects/`, fora do repositório. Sem modelo de embedding, cai para BM25 puro.
 
 **Robustez com modelos locais.** Modelos menores às vezes escrevem a chamada de ferramenta como texto (`<tool_call>…`, bloco JSON). O provedor do Ollama reconhece esses formatos e executa a chamada mesmo assim. Números enviados como string são convertidos automaticamente.
+
+## MCP e plugins
+
+O Kronos conecta aos servidores MCP (stdio e HTTP) do Claude Code — `mcpServers` do `~/.claude.json` (usuário e projeto), `.mcp.json` do projeto e `.mcp.json` dos plugins instalados — e aos de `~/.kronos/mcp.json`, no mesmo formato (`${VAR}` e `${VAR:-padrão}` são expandidos). Os do `.mcp.json` do projeto só sobem se aprovados no Claude Code (`enabledMcpjsonServers` ou `enableAllProjectMcpServers`), para um repositório clonado não rodar comandos sozinho. As ferramentas viram `mcp__<servidor>__<ferramenta>` num grupo `mcp:<servidor>` que o agente carrega com `load_tools` só quando precisa, então não pesam no prompt. Ferramenta marcada `readOnlyHint` roda sem perguntar; as demais seguem o modo de permissão (`ask` pergunta, `auto` roda). `/mcp` mostra o estado de cada servidor e `/plugins` os plugins do Claude Code em uso, com suas skills e servidores. `KRONOS_MCP=off` desliga o MCP (os testes e a avaliação usam assim).
 
 ## Skills
 

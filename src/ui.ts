@@ -2,10 +2,9 @@ import readline from 'node:readline/promises';
 import { styleText } from 'node:util';
 import type { AgentUI } from './agent-ui.js';
 import { renderMarkdownLine, type MarkdownState } from './markdown.js';
-import type { OpenRouterUsage } from './providers/openai.js';
 import { randomThinkingWord } from './thinking-words.js';
 import type { Decision, PlanItem, PlanStatus } from './tools.js';
-import type { Usage } from './types.js';
+import type { Usage, UsageReport } from './types.js';
 
 type Format = Parameters<typeof styleText>[0];
 const paint = (format: Format, text: string): string => styleText(format, text);
@@ -137,7 +136,7 @@ export class UI implements AgentUI {
     this.line(paint('gray', `tokens: ${u.input.toLocaleString('pt-BR')} entrada · ${u.output.toLocaleString('pt-BR')} saída · ${cost}`));
   }
 
-  usageBars({ bars, error }: OpenRouterUsage): void {
+  usageBars({ bars, error }: UsageReport): void {
     if (error) this.warn(error);
     for (const bar of bars) {
       const filled = Math.min(20, Math.round(bar.percent / 5));

@@ -50,6 +50,7 @@ const { values } = parseArgs({
 const outDir = path.join(path.dirname(new URL(import.meta.url).pathname), 'results', `${new Date().toISOString().replace(/[:.]/g, '-')}-${values.label}`);
 fs.mkdirSync(outDir, { recursive: true });
 process.env.KRONOS_USER_SKILLS = 'off';
+process.env.KRONOS_MCP = 'off';
 process.env.KRONOS_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'kronos-eval-home-'));
 
 function git(dir: string, ...args: string[]): void {

@@ -63,10 +63,30 @@ export interface Image {
   data: string;
 }
 
+export interface ContextUse {
+  used: number;
+  limit: number;
+  compactAt: number;
+}
+
 export interface Provider {
   addUser(text: string, images?: Image[]): void;
   addToolResults(results: ToolResult[]): void;
   step(req: StepRequest): Promise<StepResult>;
   snapshot(): unknown;
   restore(state: unknown): void;
+  compactNow?(signal: AbortSignal, focus?: string): Promise<boolean>;
+  contextUse?(): ContextUse | null;
+}
+
+export interface UsageBar {
+  label: string;
+  percent: number;
+  detail: string;
+  note: string;
+}
+
+export interface UsageReport {
+  bars: UsageBar[];
+  error?: string;
 }

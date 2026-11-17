@@ -9,12 +9,12 @@ import type { Role } from './prompts.js';
 import { AnthropicProvider, type Effort } from './providers/anthropic.js';
 import { kronosHome } from './paths.js';
 import { OllamaProvider } from './providers/ollama.js';
-import { OpenAICompatProvider } from './providers/openai.js';
+import { OpenAICompatProvider, openRouterUsage, percentOf } from './providers/openai.js';
 import { CodeIndex, Embedder } from './rag.js';
 import { workspaceDiff } from './scope.js';
 import { newSessionId, SessionStore, type SavedSession, type Turn } from './sessions.js';
 import { allowsTestEdits, clip, type Mode, type PlanItem, type ToolContext } from './tools.js';
-import type { Provider, Usage, Image } from './types.js';
+import type { Provider, Usage, Image, UsageBar, UsageReport } from './types.js';
 import type { AgentUI } from './agent-ui.js';
 
 export type ProviderName = 'ollama' | 'anthropic' | 'openai';
@@ -165,6 +165,30 @@ export class Session {
     const price = PRICE_PER_MTOK[this.cfg.model];
     if (!price) return null;
     return (this.usage.input * price[0] + this.usage.output * price[1]) / 1_000_000;
+  }
+
+  async compact(focus?: string): Promise<boolean | null> {
+    if (!this.main.canCompact) return null;
+    const done = await this.track(() => this.main.compactNow(this.signal, focus));
+    if (done) this.save();
+    return done;
+  }
+
+  private contextBar(): UsageBar | null {
+    const use = this.main.contextUse();
+    if (!use?.limit) return null;
+    return {
+      label: 'Contexto da conversa',
+      percent: percentOf(use.used, use.limit),
+      detail: `${use.used.toLocaleString('pt-BR')} de ${use.limit.toLocaleString('pt-BR')} tokens no último passo`,
+      note: `compacta sozinho em ${percentOf(use.compactAt, use.limit)}% · /compact resume agora e economiza tokens nos próximos passos`,
+    };
+  }
+
+  async usageReport(): Promise<UsageReport> {
+    const context = this.contextBar();
+    const account: UsageReport = this.cfg.provider === 'openai' ? await openRouterUsage() : { bars: [] };
+    return { ...account, bars: [...(context ? [context] : []), ...account.bars] };
   }
 
   overBudget(): boolean {

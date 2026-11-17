@@ -148,3 +148,8 @@ export function systemPrompt(role: Role, root: string, lang: string, interactive
     .filter(Boolean)
     .join('\n\n');
 }
+
+export const INIT_TASK =
+  'Create the project instructions file AGENTS.md at the repository root. If AGENTS.md, CLAUDE.md or KRONOS.md already exists, improve that file instead of creating another. ' +
+  'Explore the repository first: how to install, build, type-check, test and run it; the folder layout; the conventions visible in the code. ' +
+  'Write only what a coding agent cannot guess quickly and needs to work here: exact commands, the architecture in a few lines, non-obvious rules. Keep it under about 80 lines, in the language the project already uses.';

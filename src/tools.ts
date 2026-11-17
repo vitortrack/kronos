@@ -17,9 +17,10 @@ export type PlanStatus = 'pending' | 'in_progress' | 'done';
 export type PlanItem = { step: string; status: PlanStatus };
 export type DelegateRole = 'explorer' | 'worker';
 export type Decision = 'yes' | 'no' | 'always';
-export type ToolGroup = 'web' | 'memory' | 'search';
+type BuiltinGroup = 'web' | 'memory' | 'search';
+export type ToolGroup = BuiltinGroup | `mcp:${string}`;
 
-const TOOL_GROUPS: Record<ToolGroup, string> = {
+const TOOL_GROUPS: Record<BuiltinGroup, string> = {
   web: 'fetches a URL (documentation, APIs)',
   memory: 'saves notes for future sessions',
   search: 'semantic search over an embedding index of the codebase (slow on first use: it indexes the whole repository)',
@@ -115,13 +116,18 @@ export async function offload(text: string, root: string, name: string): Promise
   return { file: scratch.file, text: `${text.slice(0, OFFLOAD_HEAD)}\n... [output too long: ${text.length} characters, ${lines} lines. The full output is saved in ${scratch.file}: grep it or read the lines you need with read_file offset/limit instead of running the command again] ...\n${text.slice(-OFFLOAD_TAIL)}` };
 }
 
+const groupDescription = (group: ToolGroup): string => {
+  if (group.startsWith('mcp:')) return `tools of the MCP server ${group.slice(4)}`;
+  return TOOL_GROUPS[group as BuiltinGroup];
+};
+
 export function toolLoader(deferred: Tool[], load: (names: string[]) => void): Tool {
   const groups = [...new Set(deferred.flatMap((t) => (t.group ? [t.group] : [])))];
   const members = (group: string) => deferred.filter((t) => t.group === group).map((t) => t.name);
   return {
     name: 'load_tools',
     readOnly: true,
-    description: `Load more tools when your plan reaches a step that needs them; they stay available from then on. Groups: ${groups.map((g) => `"${g}" ${TOOL_GROUPS[g]} (${members(g).join(', ')})`).join('; ')}.`,
+    description: `Load more tools when your plan reaches a step that needs them; they stay available from then on. Groups: ${groups.map((g) => `"${g}" ${groupDescription(g)} (${members(g).join(', ')})`).join('; ')}.`,
     schema: { type: 'object', properties: { group: { type: 'string', enum: groups } }, required: ['group'] },
     async run(i) {
       const names = members(str(i, 'group'));

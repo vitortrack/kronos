@@ -7,13 +7,21 @@ import { bestOf } from '../../src/attempts.js';
 import { orchestrate } from '../../src/orchestrator.js';
 import { DEFAULT_EMBED_MODEL, DEFAULT_MODEL, Session, type Config, type ProviderName } from '../../src/session.js';
 import { SessionStore } from '../../src/sessions.js';
-import { findSkills, skillCommand } from '../../src/skills.js';
+import { findSkills, pluginsReport, skillCommand } from '../../src/skills.js';
 import { THINKING_WORDS } from '../../src/thinking-words.js';
 import type { Decision, Mode, PlanItem } from '../../src/tools.js';
 import type { Image, Usage } from '../../src/types.js';
-import { openRouterUsage } from '../../src/providers/openai.js';
+import { mcpHub, mcpReport } from '../../src/mcp.js';
+import { INIT_TASK } from '../../src/prompts.js';
 
-const USAGE_COMMAND = { name: 'usage', description: 'tokens e custo da conversa; no OpenRouter, gasto e saldo da conta' };
+const BUILTIN_COMMANDS = [
+  { name: 'usage', description: 'tokens, custo e contexto da conversa; no OpenRouter, gasto e saldo da conta' },
+  { name: 'compact', description: 'resume o histórico agora para gastar menos tokens (opcional: o que manter em foco)' },
+  { name: 'clear', description: 'começa uma conversa nova' },
+  { name: 'mcp', description: 'servidores MCP conectados e suas ferramentas' },
+  { name: 'plugins', description: 'plugins do Claude Code em uso (skills e MCP)' },
+  { name: 'init', description: 'cria ou melhora o AGENTS.md com os comandos e regras do projeto' },
+];
 
 type Message = Record<string, unknown>;
 type Post = (message: Message) => void;
@@ -277,7 +285,7 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
           const cfg = readConfig(root);
           this.post({ type: 'status', text: statusText(cfg) });
           this.post({ type: 'models', models: await localModels(cfg.model), current: cfg.model });
-          this.post({ type: 'skills', skills: [USAGE_COMMAND, ...findSkills(root).map(({ name, description }) => ({ name, description }))] });
+          this.post({ type: 'skills', skills: [...BUILTIN_COMMANDS, ...findSkills(root).map(({ name, description }) => ({ name, description }))] });
           this.restore(root);
         }
         return;
@@ -317,7 +325,10 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
     if (!task && !attachments.length) return;
     const session = this.ensureSession();
     if (!session) return;
-    if (task === `/${USAGE_COMMAND.name}`) return this.usage(session);
+    const [, command = '', arg = ''] = /^\/(\w+)\s*([\s\S]*)$/.exec(task) ?? [];
+    const builtin = this.commands[command];
+    if (builtin && !attachments.length) return builtin(session, arg.trim());
+    if (command === 'init') task = INIT_TASK;
     task = skillCommand(session.skills, session.activeSkills, task) ?? task;
     if (session.busy) {
       if (!this.plainRun || attachments.length || viaOrchestrator || best3) {
@@ -365,10 +376,32 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
     if (leftover.length && report.type === 'answer') await this.send(leftover.join('\n\n'), false, false, []);
   }
 
-  private async usage(session: Session): Promise<void> {
-    this.post({ type: 'usage', input: session.usage.input, output: session.usage.output, cost: session.costUsd() });
-    if (session.cfg.provider !== 'openai') return;
-    this.post({ type: 'usage-panel', ...(await openRouterUsage()) });
+  private readonly commands: Record<string, (session: Session, arg: string) => Promise<void>> = {
+    usage: async (session) => {
+      this.post({ type: 'usage', input: session.usage.input, output: session.usage.output, cost: session.costUsd() });
+      this.post({ type: 'usage-panel', ...(await session.usageReport()) });
+    },
+    compact: (session, arg) => this.compact(session, arg),
+    clear: async () => this.newChat(),
+    mcp: async (session) => this.post({ type: 'final', text: mcpReport(await mcpHub(session.cfg.root)) }),
+    plugins: async (session) => this.post({ type: 'final', text: pluginsReport(session.skills, (await mcpHub(session.cfg.root)).servers) }),
+  };
+
+  private async compact(session: Session, focus: string): Promise<void> {
+    if (session.busy) {
+      this.post({ type: 'warn', message: 'Aguarde a tarefa atual terminar para compactar.' });
+      return;
+    }
+    this.post({ type: 'busy', value: true });
+    try {
+      const done = await session.compact(focus || undefined);
+      if (done === null) this.post({ type: 'warn', message: 'Este provedor não tem compactação manual.' });
+      else if (done) this.post({ type: 'info', message: 'Histórico resumido: os próximos passos enviam menos tokens.' });
+      else this.post({ type: 'info', message: 'Nada a compactar ainda.' });
+    } catch (e) {
+      this.post({ type: 'error', message: e instanceof Error ? e.message : String(e) });
+    }
+    this.post({ type: 'busy', value: false });
   }
 
   private async open(file: string, line: number): Promise<void> {

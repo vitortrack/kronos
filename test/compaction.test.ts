@@ -205,3 +205,28 @@ test('a 429 from Ollama becomes a usage-limit message with what to do, not the r
     return true;
   });
 });
+
+test('manual compaction summarizes with the requested focus and the context use is reported against the window', async () => {
+  const prompts: string[] = [];
+  const seen = stubOllama(600);
+  const ollama = globalThis.fetch;
+  globalThis.fetch = (async (url: string, init: { body: string }) => {
+    const body = JSON.parse(init.body) as { stream?: boolean; messages?: Message[] };
+    if (body.stream === false) prompts.push(body.messages![0]!.content);
+    return ollama(url, init as RequestInit);
+  }) as typeof fetch;
+  const provider = new OllamaProvider('glm:cloud', 1000);
+  const req: StepRequest = { system: 's', tools: [{ name: 'bash', description: 'd', schema: { type: 'object', properties: {}, required: [] } }], signal: new AbortController().signal, onText: () => {}, onThinking: () => {} };
+  assert.equal(provider.contextUse(), null);
+  provider.addUser('task');
+  for (let i = 0; i < 12; i++) {
+    const r = await provider.step(req);
+    provider.addToolResults(r.toolCalls.map((c) => ({ id: c.id, name: c.name, output: 'ok', isError: false })));
+  }
+  const before = seen.summaries;
+  assert.deepEqual(provider.contextUse(), { used: 600, limit: 1000, compactAt: 750 });
+  assert.equal(await provider.compactNow(new AbortController().signal, 'the migration file names'), true);
+  assert.equal(seen.summaries, before + 1);
+  assert.match(prompts.at(-1)!, /focus on: the migration file names/);
+  assert.equal(provider.contextUse()!.used, 0);
+});

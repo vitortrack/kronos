@@ -7,9 +7,10 @@ import { readMemories } from './memory.js';
 import { orchestrate } from './orchestrator.js';
 import { gateFor } from './gate.js';
 import { agentJudge } from './judge.js';
-import { LANGUAGE_NAMES, languageName } from './prompts.js';
+import { INIT_TASK, LANGUAGE_NAMES, languageName } from './prompts.js';
+import { closeMcp, mcpHub, mcpReport } from './mcp.js';
+import { pluginsReport } from './skills.js';
 import type { Effort } from './providers/anthropic.js';
-import { openRouterUsage } from './providers/openai.js';
 import { DEFAULT_EMBED_MODEL, DEFAULT_MODEL, Session, type Config } from './session.js';
 import type { Mode } from './tools.js';
 import { UI } from './ui.js';
@@ -58,7 +59,11 @@ const COMMANDS = `Comandos:
   /orchestrate <tarefa>    roda a tarefa no pipeline multiagente
   /index                   indexa (ou atualiza) o código para o RAG
   /memory                  lista a memória de longo prazo do projeto
-  /usage                   tokens e custo da sessão; no openai, gasto e saldo do OpenRouter
+  /usage                   tokens, custo e contexto da conversa; no openai, gasto e saldo do OpenRouter
+  /compact [foco]          resume o histórico agora para gastar menos tokens nos próximos passos
+  /mcp                     servidores MCP conectados e suas ferramentas
+  /plugins                 plugins do Claude Code em uso (skills e MCP)
+  /init                    cria ou melhora o AGENTS.md com os comandos e regras do projeto
   /sessions                lista as conversas salvas deste projeto
   /resume <id>             retoma uma conversa salva
   /fork                    continua numa cópia da conversa atual
@@ -327,7 +332,27 @@ async function main(): Promise<void> {
       }
       case '/usage':
         ui.usage(session.usage, session.costUsd());
-        if (session.cfg.provider === 'openai') ui.usageBars(await openRouterUsage());
+        ui.usageBars(await session.usageReport());
+        break;
+      case '/compact': {
+        if (session.busy) break;
+        const done = await session.compact(arg || undefined).catch((e: unknown) => {
+          ui.error(e instanceof Error ? e.message : String(e));
+          return false;
+        });
+        if (done === null) ui.warn('este provedor não tem compactação manual');
+        else if (done) ui.info('histórico resumido: os próximos passos enviam menos tokens');
+        else ui.info('nada a compactar ainda');
+        break;
+      }
+      case '/mcp':
+        ui.final(mcpReport(await mcpHub(cfg.root)));
+        break;
+      case '/plugins':
+        ui.final(pluginsReport(session.skills, (await mcpHub(cfg.root)).servers));
+        break;
+      case '/init':
+        await execute(INIT_TASK, false);
         break;
       case '/sessions': {
         const saved = session.sessions.list();
@@ -356,7 +381,9 @@ async function main(): Promise<void> {
   ui.close();
 }
 
-main().catch((e: unknown) => {
-  console.error(e instanceof Error ? e.message : e);
-  process.exit(1);
-});
+main()
+  .finally(closeMcp)
+  .catch((e: unknown) => {
+    console.error(e instanceof Error ? e.message : e);
+    process.exit(1);
+  });

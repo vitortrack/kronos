@@ -6,6 +6,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { stripVTControlCharacters } from 'node:util';
 import { renderMarkdownLine } from '../src/markdown.js';
+import { closeMcp } from '../src/mcp.js';
 import { memoryFile } from '../src/memory.js';
 import type { Judge } from '../src/contract.js';
 import { orchestrate } from '../src/orchestrator.js';
@@ -1124,4 +1125,53 @@ test('an openai session adds up the cost each step reports, and says unknown whe
   session.addUsage({ input: 10, output: 1, cost: 0.02 });
   ui.close();
   assert.ok(Math.abs(session.costUsd()! - 0.03) < 1e-9);
+});
+
+test('an MCP server from the Kronos config becomes a tool group the agent loads and calls', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'kronos-mcp-user-'));
+  const saved = { HOME: process.env.HOME, KRONOS_MCP: process.env.KRONOS_MCP };
+  const fixture = path.join(path.dirname(new URL(import.meta.url).pathname), 'fixtures', 'fake-mcp.mjs');
+  fs.writeFileSync(path.join(process.env.KRONOS_HOME!, 'mcp.json'), JSON.stringify({ mcpServers: { fake: { command: process.execPath, args: [fixture], env: { FAKE_LABEL: 'kronos' } } } }));
+  process.env.HOME = home;
+  delete process.env.KRONOS_MCP;
+  try {
+    let loader = '';
+    const provider = new ScriptedProvider([
+      () => call('load_tools', { group: 'mcp:fake' }),
+      () => call('mcp__fake__echo', { text: 'oi' }),
+      ({ results }) => {
+        assert.equal(results.at(-1)![0]!.output, 'echo oi from kronos');
+        return answer('done');
+      },
+    ]);
+    const spy: Provider = {
+      ...provider,
+      addUser: (t) => provider.addUser(t),
+      addToolResults: (r) => provider.addToolResults(r),
+      snapshot: () => provider.snapshot(),
+      restore: (s) => provider.restore(s),
+      step: (req) => {
+        loader ||= req.tools.find((t) => t.name === 'load_tools')?.description ?? '';
+        return provider.step(req);
+      },
+    };
+    const ui = UI.create();
+    const out = await new Session(config(workspace()), ui, () => spy).run('use the fake server');
+    ui.close();
+    assert.equal(out, 'done');
+    assert.match(loader, /"mcp:fake" tools of the MCP server fake \(mcp__fake__echo, mcp__fake__fail\)/);
+  } finally {
+    closeMcp();
+    fs.rmSync(path.join(process.env.KRONOS_HOME!, 'mcp.json'));
+    process.env.HOME = saved.HOME;
+    if (saved.KRONOS_MCP) process.env.KRONOS_MCP = saved.KRONOS_MCP;
+  }
+});
+
+test('/compact says when the provider has no manual compaction, and usage has no context bar without a window', async () => {
+  const ui = UI.create();
+  const session = new Session(config(workspace()), ui, () => new ScriptedProvider([]));
+  assert.equal(await session.compact(), null);
+  assert.deepEqual(await session.usageReport(), { bars: [] });
+  ui.close();
 });

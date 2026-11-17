@@ -1,4 +1,5 @@
 import { setTimeout as sleep } from 'node:timers/promises';
+import type { UsageBar, UsageReport } from '../types.js';
 import { CLOUD_CTX_CAP, OllamaProvider, type OllamaChunk, type OllamaMessage } from './ollama.js';
 
 type Body = { model: string; stream: boolean; messages: OllamaMessage[]; tools?: unknown[] };
@@ -34,7 +35,7 @@ export function toOpenAIMessages(messages: OllamaMessage[]): object[] {
   });
 }
 
-async function* sseData(res: Response): AsyncGenerator<string> {
+export async function* sseData(res: Response): AsyncGenerator<string> {
   if (!res.body) return;
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -140,17 +141,6 @@ type Budget = { limit_usd?: number; spend_usd?: number; reset_interval?: string 
 type KeyInfo = { data?: { usage_weekly?: number; effective_budget?: Budget | null } };
 type Credits = { data?: { total_credits?: number; total_usage?: number } };
 
-export interface UsageBar {
-  label: string;
-  percent: number;
-  detail: string;
-  note: string;
-}
-
-export interface OpenRouterUsage {
-  bars: UsageBar[];
-  error?: string;
-}
 
 const DAY_MS = 86_400_000;
 
@@ -167,7 +157,7 @@ const PERIOD_START: Record<string, (end: Date) => Date> = {
 const PERIOD_LABEL: Record<string, string> = { daily: 'dia', weekly: 'semana', monthly: 'mês' };
 
 const usd = (n: number): string => `US$ ${n.toFixed(2)}`;
-const percentOf = (part: number, whole: number): number => Math.round((part / whole) * 100);
+export const percentOf = (part: number, whole: number): number => Math.round((part / whole) * 100);
 const dayMonth = (d: Date): string => d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' });
 
 function keyBar(budget: Budget, now: Date): UsageBar | null {
@@ -205,7 +195,7 @@ export async function openRouterUsage(
   baseUrl = process.env.OPENAI_BASE_URL ?? 'https://openrouter.ai/api/v1',
   apiKey = process.env.OPENROUTER_API_KEY ?? process.env.OPENAI_API_KEY ?? '',
   now = new Date(),
-): Promise<OpenRouterUsage> {
+): Promise<UsageReport> {
   if (!apiKey) return { bars: [], error: 'saldo indisponível: defina OPENROUTER_API_KEY' };
   const get = async <T>(path: string): Promise<T | null> => {
     const res = await fetch(`${baseUrl}${path}`, { headers: { authorization: `Bearer ${apiKey}` } }).catch(() => null);
