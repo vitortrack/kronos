@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { OpenAICompatProvider } from '../src/providers/openai.js';
+import { OpenAICompatProvider, openRouterBalance } from '../src/providers/openai.js';
 import type { StepRequest } from '../src/types.js';
 
 type Sent = { url: string; auth: string; body: { stream: boolean; messages: { role: string; content: string | null; tool_call_id?: string; tool_calls?: { id: string; function: { arguments: string } }[] }[] } };
@@ -83,4 +83,44 @@ test('a 429 that outlasts every retry fails with the rate-limit hint', async () 
   provider.addUser('oi');
   await assert.rejects(provider.step(req), /429 \(limite de requisições persistiu/);
   assert.equal(state.calls, 3);
+});
+
+test('the cost OpenRouter reports for a step comes back in its usage', async () => {
+  stub();
+  const ok = globalThis.fetch;
+  globalThis.fetch = (async (...args: Parameters<typeof fetch>) => {
+    const res = await ok(...args);
+    const body = (await res.text()).replace('"completion_tokens":7}', '"completion_tokens":7,"cost":0.0123}');
+    return new Response(body);
+  }) as typeof fetch;
+  const provider = new OpenAICompatProvider('qwen/qwen3-coder-next', 'https://router.test/v1', 'k');
+  provider.addUser('oi');
+  const r = await provider.step(req);
+  assert.deepEqual(r.usage, { input: 120, output: 7, cost: 0.0123 });
+});
+
+test('the balance shows key spend, key limit and account credits', async () => {
+  const urls: string[] = [];
+  globalThis.fetch = (async (url: string) => {
+    urls.push(url);
+    if (url.endsWith('/key')) return Response.json({ data: { usage: 8.7, usage_daily: 0.5, usage_monthly: 8.7, limit: 50, limit_remaining: 41.3 } });
+    return Response.json({ data: { total_credits: 10, total_usage: 8.7 } });
+  }) as typeof fetch;
+  const text = await openRouterBalance('https://router.test/v1', 'k');
+  assert.deepEqual(urls.sort(), ['https://router.test/v1/credits', 'https://router.test/v1/key']);
+  assert.equal(text, 'chave: hoje US$ 0.50 · mês US$ 8.70 · total US$ 8.70 · limite US$ 50.00 · restam US$ 41.30\nconta: comprados US$ 10.00 · gastos US$ 8.70 · saldo US$ 1.30');
+});
+
+test('a key without limit says so, and a refused credits call leaves only the key line', async () => {
+  globalThis.fetch = (async (url: string) => {
+    if (url.endsWith('/key')) return Response.json({ data: { usage: 1, usage_daily: 0, usage_monthly: 1, limit: null } });
+    return new Response('forbidden', { status: 403 });
+  }) as typeof fetch;
+  assert.equal(await openRouterBalance('https://router.test/v1', 'k'), 'chave: hoje US$ 0.00 · mês US$ 1.00 · total US$ 1.00 · sem limite');
+});
+
+test('the balance explains what is missing when there is no key or no answer', async () => {
+  assert.match(await openRouterBalance('https://router.test/v1', ''), /OPENROUTER_API_KEY/);
+  globalThis.fetch = (async () => { throw new Error('offline'); }) as typeof fetch;
+  assert.match(await openRouterBalance('https://router.test/v1', 'k'), /não respondeu/);
 });

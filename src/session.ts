@@ -155,10 +155,12 @@ export class Session {
   addUsage(u: Usage): void {
     this.usage.input += u.input;
     this.usage.output += u.output;
+    if (u.cost !== undefined) this.usage.cost = (this.usage.cost ?? 0) + u.cost;
     this.log({ event: 'usage', step: u, total: this.usage, costUsd: this.costUsd() });
   }
 
   costUsd(): number | null {
+    if (this.cfg.provider === 'openai') return this.usage.cost ?? null;
     if (this.cfg.provider !== 'anthropic') return 0;
     const price = PRICE_PER_MTOK[this.cfg.model];
     if (!price) return null;

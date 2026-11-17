@@ -201,6 +201,7 @@ export class Agent {
           },
         });
         this.session.addUsage(r.usage);
+        this.ui.stepUsage?.(r.usage);
         if (r.compacted) {
           this.ui.info('contexto compactado: histórico antigo resumido, pedido original mantido');
           this.session.log({ agent: this.role, event: 'compacted', step });

@@ -8,7 +8,7 @@ type SseChunk = {
     delta?: { content?: string | null; reasoning?: string | null; tool_calls?: { index: number; function?: { name?: string; arguments?: string } }[] };
     finish_reason?: string | null;
   }[];
-  usage?: { prompt_tokens?: number; completion_tokens?: number };
+  usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number };
   error?: { message?: string };
 };
 
@@ -95,7 +95,7 @@ export class OpenAICompatProvider extends OllamaProvider {
           stream,
           messages: toOpenAIMessages(messages),
           ...(tools?.length ? { tools } : {}),
-          ...(stream ? { stream_options: { include_usage: true } } : {}),
+          ...(stream ? { stream_options: { include_usage: true }, usage: { include: true } } : {}),
         }),
         signal,
       });
@@ -131,6 +131,35 @@ export class OpenAICompatProvider extends OllamaProvider {
       done_reason: finish === 'length' ? 'length' : 'stop',
       prompt_eval_count: usage?.prompt_tokens ?? 0,
       eval_count: usage?.completion_tokens ?? 0,
+      ...(usage?.cost === undefined ? {} : { cost: usage.cost }),
     };
   }
+}
+
+type KeyInfo = { data?: { usage?: number; usage_daily?: number; usage_monthly?: number; limit?: number | null; limit_remaining?: number | null } };
+type Credits = { data?: { total_credits?: number; total_usage?: number } };
+
+const usd = (n: number): string => `US$ ${n.toFixed(2)}`;
+
+export async function openRouterBalance(
+  baseUrl = process.env.OPENAI_BASE_URL ?? 'https://openrouter.ai/api/v1',
+  apiKey = process.env.OPENROUTER_API_KEY ?? process.env.OPENAI_API_KEY ?? '',
+): Promise<string> {
+  if (!apiKey) return 'saldo indisponível: defina OPENROUTER_API_KEY';
+  const get = async <T>(path: string): Promise<T | null> => {
+    const res = await fetch(`${baseUrl}${path}`, { headers: { authorization: `Bearer ${apiKey}` } }).catch(() => null);
+    return res?.ok ? ((await res.json()) as T) : null;
+  };
+  const [key, credits] = await Promise.all([get<KeyInfo>('/key'), get<Credits>('/credits')]);
+  const lines: string[] = [];
+  const k = key?.data;
+  if (k) {
+    const limit = k.limit == null ? 'sem limite' : `limite ${usd(k.limit)} · restam ${usd(k.limit_remaining ?? 0)}`;
+    lines.push(`chave: hoje ${usd(k.usage_daily ?? 0)} · mês ${usd(k.usage_monthly ?? 0)} · total ${usd(k.usage ?? 0)} · ${limit}`);
+  }
+  const c = credits?.data;
+  if (c?.total_credits !== undefined) {
+    lines.push(`conta: comprados ${usd(c.total_credits)} · gastos ${usd(c.total_usage ?? 0)} · saldo ${usd(c.total_credits - (c.total_usage ?? 0))}`);
+  }
+  return lines.join('\n') || 'saldo indisponível: o OpenRouter não respondeu';
 }

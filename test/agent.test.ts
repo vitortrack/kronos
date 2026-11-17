@@ -1115,3 +1115,13 @@ test('scope check covers files edited in earlier messages of the same conversati
     ui.close();
   }
 });
+
+test('an openai session adds up the cost each step reports, and says unknown when none came', () => {
+  const ui = UI.create();
+  const session = new Session(config(workspace(), { provider: 'openai' }), ui, () => new ScriptedProvider([]));
+  assert.equal(session.costUsd(), null);
+  session.addUsage({ input: 10, output: 1, cost: 0.01 });
+  session.addUsage({ input: 10, output: 1, cost: 0.02 });
+  ui.close();
+  assert.ok(Math.abs(session.costUsd()! - 0.03) < 1e-9);
+});

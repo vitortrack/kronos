@@ -1,10 +1,12 @@
 import type { Decision, PlanItem } from './tools.js';
+import type { Usage } from './types.js';
 
 export interface AgentUI {
   readonly text: (delta: string) => void;
   readonly thinking: (delta: string) => void;
   tool(name: string, args: string): void;
   observation(ok: boolean, output: string): void;
+  stepUsage?(usage: Usage): void;
   plan(items: PlanItem[]): void;
   phase(title: string): void;
   info(message: string): void;

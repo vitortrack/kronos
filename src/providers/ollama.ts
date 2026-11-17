@@ -19,6 +19,7 @@ export type OllamaChunk = {
   done_reason?: string;
   prompt_eval_count?: number;
   eval_count?: number;
+  cost?: number;
   error?: string;
 };
 
@@ -149,7 +150,7 @@ export class OllamaProvider implements Provider {
         req.onToolCall?.(call);
       }
       if (chunk.done) {
-        usage = { input: chunk.prompt_eval_count ?? 0, output: chunk.eval_count ?? 0 };
+        usage = { input: chunk.prompt_eval_count ?? 0, output: chunk.eval_count ?? 0, ...(chunk.cost === undefined ? {} : { cost: chunk.cost }) };
         doneReason = chunk.done_reason ?? '';
       }
     }

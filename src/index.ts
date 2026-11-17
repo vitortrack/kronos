@@ -9,6 +9,7 @@ import { gateFor } from './gate.js';
 import { agentJudge } from './judge.js';
 import { LANGUAGE_NAMES, languageName } from './prompts.js';
 import type { Effort } from './providers/anthropic.js';
+import { openRouterBalance } from './providers/openai.js';
 import { DEFAULT_EMBED_MODEL, DEFAULT_MODEL, Session, type Config } from './session.js';
 import type { Mode } from './tools.js';
 import { UI } from './ui.js';
@@ -57,7 +58,7 @@ const COMMANDS = `Comandos:
   /orchestrate <tarefa>    roda a tarefa no pipeline multiagente
   /index                   indexa (ou atualiza) o código para o RAG
   /memory                  lista a memória de longo prazo do projeto
-  /usage                   tokens e custo da sessão
+  /usage                   tokens e custo da sessão; no openai, gasto e saldo do OpenRouter
   /sessions                lista as conversas salvas deste projeto
   /resume <id>             retoma uma conversa salva
   /fork                    continua numa cópia da conversa atual
@@ -326,6 +327,7 @@ async function main(): Promise<void> {
       }
       case '/usage':
         ui.usage(session.usage, session.costUsd());
+        if (session.cfg.provider === 'openai') ui.info(await openRouterBalance());
         break;
       case '/sessions': {
         const saved = session.sessions.list();

@@ -10,7 +10,10 @@ import { SessionStore } from '../../src/sessions.js';
 import { findSkills, skillCommand } from '../../src/skills.js';
 import { THINKING_WORDS } from '../../src/thinking-words.js';
 import type { Decision, Mode, PlanItem } from '../../src/tools.js';
-import type { Image } from '../../src/types.js';
+import type { Image, Usage } from '../../src/types.js';
+import { openRouterBalance } from '../../src/providers/openai.js';
+
+const USAGE_COMMAND = { name: 'usage', description: 'tokens e custo da conversa; no OpenRouter, gasto e saldo da conta' };
 
 type Message = Record<string, unknown>;
 type Post = (message: Message) => void;
@@ -32,6 +35,10 @@ class WebviewUI implements AgentUI {
   readonly thinking = (delta: string): void => {
     if (!this.agent) this.post({ type: 'thinking', delta });
   };
+
+  stepUsage(usage: Usage): void {
+    if (!this.agent) this.post({ type: 'step-usage', input: usage.input, output: usage.output });
+  }
 
   tool(name: string, args: string): void {
     this.post({ type: 'tool', agent: this.agent, name, args });
@@ -140,7 +147,7 @@ async function hasVision(model: string): Promise<boolean> {
 
 const hasAnthropicKey = (): boolean => Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
 const CLAUDE_MODELS = hasAnthropicKey() ? ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'] : [];
-const OPENROUTER_MODELS = process.env.OPENROUTER_API_KEY ? [DEFAULT_MODEL.openai] : [];
+const OPENROUTER_MODELS = process.env.OPENROUTER_API_KEY ? [DEFAULT_MODEL.openai, 'z-ai/glm-5.2'] : [];
 
 async function localModels(current: string): Promise<string[]> {
   try {
@@ -270,7 +277,7 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
           const cfg = readConfig(root);
           this.post({ type: 'status', text: statusText(cfg) });
           this.post({ type: 'models', models: await localModels(cfg.model), current: cfg.model });
-          this.post({ type: 'skills', skills: findSkills(root).map(({ name, description }) => ({ name, description })) });
+          this.post({ type: 'skills', skills: [USAGE_COMMAND, ...findSkills(root).map(({ name, description }) => ({ name, description }))] });
           this.restore(root);
         }
         return;
@@ -310,6 +317,7 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
     if (!task && !attachments.length) return;
     const session = this.ensureSession();
     if (!session) return;
+    if (task === `/${USAGE_COMMAND.name}`) return this.usage(session);
     task = skillCommand(session.skills, session.activeSkills, task) ?? task;
     if (session.busy) {
       if (!this.plainRun || attachments.length || viaOrchestrator || best3) {
@@ -351,11 +359,16 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
     clearInterval(timer);
     tokens();
     this.post(report);
-    const cost = session.costUsd();
-    this.post({ type: 'usage', input: session.usage.input, output: session.usage.output, cost });
+    this.post({ type: 'usage', input: session.usage.input, output: session.usage.output, cost: session.costUsd() });
     this.post({ type: 'busy', value: false });
     const leftover = session.takeQueued();
     if (leftover.length && report.type === 'answer') await this.send(leftover.join('\n\n'), false, false, []);
+  }
+
+  private async usage(session: Session): Promise<void> {
+    this.post({ type: 'usage', input: session.usage.input, output: session.usage.output, cost: session.costUsd() });
+    if (session.cfg.provider !== 'openai') return;
+    for (const message of (await openRouterBalance()).split('\n')) this.post({ type: 'info', message });
   }
 
   private async open(file: string, line: number): Promise<void> {

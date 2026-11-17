@@ -366,6 +366,12 @@
         thinkingDelta(m.delta);
         thinkingNow(true);
         break;
+      case 'step-usage':
+        if (work?.lastThink) {
+          work.lastThink.count.textContent = ` · ↑ ${compact(m.input)} ↓ ${compact(m.output)} tokens`;
+          work.lastThink = null;
+        }
+        break;
       case 'tokens':
         if (work && m.input + m.output) work.tokens = ` · ↑ ${compact(m.input)} ↓ ${compact(m.output)} tokens`;
         break;

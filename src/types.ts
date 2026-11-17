@@ -34,6 +34,7 @@ export interface ToolResult {
 export interface Usage {
   input: number;
   output: number;
+  cost?: number;
 }
 
 export type StopReason = 'end' | 'tool_use' | 'max_tokens' | 'refusal';
