@@ -552,9 +552,15 @@
         renderSlash();
         return;
       }
-      if (e.key === 'Enter' || e.key === 'Tab') {
+      if (e.key === 'Tab') {
         e.preventDefault();
         choose(slashAt);
+        return;
+      }
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+        e.preventDefault();
+        choose(slashAt);
+        send();
         return;
       }
       if (e.key === 'Escape') {

@@ -220,7 +220,7 @@ kronos -p anthropic --effort xhigh "investigue o vazamento de memória"
 
 ### Comandos
 
-No modo interativo do CLI, digite o comando no lugar da tarefa. Na extensão, digite `/` no chat: os comandos marcados como **CLI e extensão** aparecem no menu junto com as skills. **Ctrl+C** (ou **Parar**, na extensão) interrompe a tarefa em andamento sem sair.
+No modo interativo do CLI, digite o comando no lugar da tarefa. Na extensão, digite `/` no chat: os comandos marcados como **CLI e extensão** aparecem no menu junto com as skills. No menu, **Enter** escolhe e já envia; **Tab** só completa, para você digitar o argumento (ex.: `/compact` + foco, `/mcp ligar` + servidor). **Ctrl+C** (ou **Parar**, na extensão) interrompe a tarefa em andamento sem sair.
 
 | Comando | Onde | O que faz |
 |---|---|---|
