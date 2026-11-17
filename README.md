@@ -1,8 +1,37 @@
-# Kronos
+<p align="center">
+  <img src="vscode/media/icon.png" alt="Kronos" width="112" height="112">
+</p>
 
-Agente de código autônomo para o terminal e o VS Code. Lê, entende, altera e verifica código no seu projeto, com raciocínio ReAct (pensar → agir → observar), planejamento, autocorreção, portões determinísticos de verificação e de escopo, orquestração multiagente, RAG sobre o código e memória vetorial de longo prazo.
+<h1 align="center">Kronos</h1>
 
-Roda **100% local** com [Ollama](https://ollama.com) ou com **Claude** (API da Anthropic).
+<p align="center">
+  <strong>Agente de código autônomo para o terminal e o VS Code.</strong><br>
+  Lê, entende, altera e verifica código no seu projeto — com modelos locais, na nuvem ou com Claude.
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img alt="Licença MIT" src="https://img.shields.io/badge/licen%C3%A7a-MIT-blue"></a>
+  <img alt="Node.js 22+" src="https://img.shields.io/badge/node-%E2%89%A5%2022-339933?logo=node.js&logoColor=white">
+  <img alt="VS Code 1.90+" src="https://img.shields.io/badge/VS%20Code-%E2%89%A5%201.90-007ACC?logo=visualstudiocode&logoColor=white">
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white">
+  <img alt="MCP" src="https://img.shields.io/badge/MCP-stdio%20%7C%20HTTP-8A2BE2">
+</p>
+
+<p align="center">
+  <a href="#instalação">Instalação</a> ·
+  <a href="#extensão-do-vs-code">Extensão</a> ·
+  <a href="#uso">Uso</a> ·
+  <a href="#comandos">Comandos</a> ·
+  <a href="#configuração-e-personalização">Configuração</a> ·
+  <a href="#arquitetura">Arquitetura</a> ·
+  <a href="#segurança">Segurança</a>
+</p>
+
+---
+
+Raciocínio ReAct (pensar → agir → observar), planejamento, autocorreção, portões determinísticos de verificação e de escopo, orquestração multiagente, RAG sobre o código, memória vetorial de longo prazo e ferramentas externas via MCP.
+
+Roda **100% local** com [Ollama](https://ollama.com), com modelos na nuvem pelo [OpenRouter](https://openrouter.ai) (ou qualquer API compatível com OpenAI) ou com **Claude** (API da Anthropic).
 
 ```text
 › Os testes estão falhando. Encontre a causa raiz e corrija.
@@ -189,7 +218,30 @@ kronos -p anthropic --effort xhigh "investigue o vazamento de memória"
 | `-r`, `--resume <id>` | retoma uma conversa salva |
 | `--fork` | com `-c` ou `-r`: continua numa cópia, sem alterar a original |
 
-Comandos no modo interativo: `/plan`, `/mode`, `/review on|off`, `/lang <idioma>`, `/traduzir [idioma]`, `/thinking on|off`, `/orchestrate <tarefa>`, `/index`, `/memory`, `/usage`, `/compact [foco]`, `/mcp`, `/plugins`, `/init`, `/sessions`, `/resume <id>`, `/fork`, `/clear`, `/exit`. Na extensão, `/usage`, `/compact`, `/clear`, `/mcp`, `/plugins` e `/init` aparecem no menu do `/`. **Ctrl+C** interrompe a tarefa em andamento sem sair.
+### Comandos
+
+No modo interativo do CLI, digite o comando no lugar da tarefa. Na extensão, digite `/` no chat: os comandos marcados como **CLI e extensão** aparecem no menu junto com as skills. **Ctrl+C** (ou **Parar**, na extensão) interrompe a tarefa em andamento sem sair.
+
+| Comando | Onde | O que faz |
+|---|---|---|
+| `/usage` | CLI e extensão | Tokens e custo da conversa, barra de **contexto** (quanto da janela o último passo usou e em que ponto compacta sozinho) e, no OpenRouter, barras de **limite da chave** e **créditos da conta**, com o ritmo de gasto e quanto o saldo dura |
+| `/compact [foco]` | CLI e extensão | Resume o histórico agora, sem esperar a compactação automática, para os próximos passos enviarem menos tokens. O foco opcional diz o que o resumo deve preservar (ex.: `/compact nomes das migrations`). Ollama e OpenRouter |
+| `/clear` | CLI e extensão | Começa uma conversa nova (na extensão, o mesmo que **Nova conversa**) |
+| `/mcp [ligar\|desligar <servidor> \| importar]` | CLI e extensão | Servidores MCP: de onde cada um veio, quantas ferramentas tem ou por que falhou; liga, desliga ou traz os do Claude Code (veja [MCP](#mcp)) |
+| `/plugins [instalar <url-ou-pasta> \| remover <nome>]` | CLI e extensão | Plugins em uso, com as skills e os servidores MCP de cada um; instala ou remove plugins do Kronos (veja [Plugins](#plugins)) |
+| `/init` | CLI e extensão | O agente explora o projeto e cria ou melhora o `AGENTS.md` (comandos de build e teste, arquitetura, regras não óbvias) |
+| `/<skill> [texto]` | CLI e extensão | Liga a skill na conversa; `/<skill> off` desliga |
+| `/plan` | CLI | Mostra o plano atual |
+| `/mode ask\|auto\|read-only` | CLI | Muda o modo de permissão |
+| `/review on\|off` | CLI | Liga ou desliga a revisão por agente crítico |
+| `/lang <idioma>` | CLI | Idioma das respostas (`pt-BR`, `en`, `es`, …, `auto`) |
+| `/traduzir [idioma]` | CLI | Traduz a última resposta |
+| `/thinking on\|off` | CLI | Mostra ou esconde o raciocínio do modelo |
+| `/orchestrate <tarefa>` | CLI | Roda a tarefa no pipeline multiagente |
+| `/index` | CLI | Indexa (ou atualiza) o código para o RAG |
+| `/memory` | CLI | Lista a memória de longo prazo do projeto |
+| `/sessions`, `/resume <id>`, `/fork` | CLI | Lista, retoma ou copia conversas salvas |
+| `/help`, `/exit` | CLI | Ajuda e saída |
 
 Cada conversa é salva ao fim de cada tarefa em `~/.kronos/projects/<projeto>/sessions/<id>.json` (histórico do agente, pedidos e respostas, plano e uso). A extensão do VS Code restaura a conversa aberta quando a janela recarrega; **Nova conversa** começa outra.
 
@@ -245,15 +297,191 @@ A saída é Markdown renderizado no terminal (títulos, listas, negrito, blocos 
 
 **Robustez com modelos locais.** Modelos menores às vezes escrevem a chamada de ferramenta como texto (`<tool_call>…`, bloco JSON). O provedor do Ollama reconhece esses formatos e executa a chamada mesmo assim. Números enviados como string são convertidos automaticamente.
 
-## MCP e plugins
+## Configuração e personalização
 
-O Kronos conecta aos servidores MCP (stdio e HTTP) do Claude Code — `mcpServers` do `~/.claude.json` (usuário e projeto), `.mcp.json` do projeto e `.mcp.json` dos plugins instalados — e aos de `~/.kronos/mcp.json`, no mesmo formato (`${VAR}` e `${VAR:-padrão}` são expandidos). Os do `.mcp.json` do projeto só sobem se aprovados no Claude Code (`enabledMcpjsonServers` ou `enableAllProjectMcpServers`), para um repositório clonado não rodar comandos sozinho. As ferramentas viram `mcp__<servidor>__<ferramenta>` num grupo `mcp:<servidor>` que o agente carrega com `load_tools` só quando precisa, então não pesam no prompt. Ferramenta marcada `readOnlyHint` roda sem perguntar; as demais seguem o modo de permissão (`ask` pergunta, `auto` roda). `/mcp` mostra o estado de cada servidor e `/plugins` os plugins do Claude Code em uso, com suas skills e servidores. `KRONOS_MCP=off` desliga o MCP (os testes e a avaliação usam assim).
+O Kronos tem configuração **própria**, em `~/.kronos/` (vale para todos os projetos) e em `.kronos/` dentro do projeto (vale só para ele). Para quem já usa o Claude Code, ele também lê a configuração do Claude Code, mas **só como reserva**: quando os dois têm algo com o mesmo nome, vale o do Kronos; o que só existe no Claude Code entra para completar. `KRONOS_CLAUDE_CONFIG=off` desliga a reserva e deixa o Kronos só com o que é dele.
 
-## Skills
+Arquivos que fazem parte do **repositório** (`AGENTS.md`, `CLAUDE.md`, `.claude/skills/`, `.mcp.json`) não são configuração do Claude Code, e sim do projeto: o Kronos sempre os lê, com ou sem a reserva.
 
-O Kronos lê skills no formato do Claude Code (`SKILL.md` com `name` e `description` no frontmatter) em `.claude/skills/` e `.agents/skills/` do projeto, em `~/.claude/skills/` e em `~/.kronos/skills/`; com o mesmo nome, vale a do projeto. O prompt lista só nome e descrição; o agente carrega o texto completo (e os arquivos de apoio da pasta) com a ferramenta `skill` quando a tarefa combina, e uma skill com `allowed-tools` libera as ferramentas que cita. Sem skills, nada muda no prompt nem nas ferramentas. Na avaliação, com uma regra de projeto que só existe numa skill, o acerto foi de 12/20 para 19/20 e o agente carregou a skill nas 20 execuções.
+Nada é delegado ao Claude Code: o Kronos não chama o Claude Code nem precisa que ele esteja aberto ou instalado. A reserva é só leitura de arquivos.
 
-**Revisão automática.** Depois de uma tarefa com 10 passos ou mais, uma chamada separada relê a conversa (pedidos anteriores, chamadas de ferramenta, resposta final) e decide se cria ou atualiza uma skill de classe de tarefa em `~/.kronos/skills/` — por exemplo quando o usuário corrigiu o jeito de trabalhar ou surgiu uma técnica reaproveitável. Ela só escreve ali: as skills do projeto e as de `~/.claude/skills/` são só leitura. `KRONOS_USER_SKILLS=off` desliga a revisão e as skills de usuário (a avaliação usa assim).
+### Mapa: onde o Kronos lê cada coisa
+
+| O quê | Kronos (prioridade) | Repositório | Reserva do Claude Code |
+|---|---|---|---|
+| Instruções do usuário | `~/.kronos/KRONOS.md` | — | `~/.claude/CLAUDE.md` |
+| Instruções do projeto | `KRONOS.md` | `AGENTS.md`, `CLAUDE.md`, `.claude/CLAUDE.md`, `CLAUDE.local.md` | — |
+| Instruções por pasta | `KRONOS.md` na pasta | `AGENTS.md`, `CLAUDE.md` na pasta | — |
+| Skills do projeto | `.kronos/skills/` | `.claude/skills/`, `.agents/skills/` | — |
+| Skills do usuário | `~/.kronos/skills/` | — | `~/.claude/skills/` |
+| Plugins | `~/.kronos/plugins/` | — | `~/.claude/plugins/` (instalados pelo `/plugin` do Claude Code) |
+| Servidores MCP | `.kronos/mcp.json`, `~/.kronos/mcp.json`, `.mcp.json` dos plugins do Kronos | `.mcp.json` | `~/.claude.json` (do projeto e do usuário), `.mcp.json` dos plugins do Claude Code |
+| Liga, desliga e aprovação de MCP | `~/.kronos/mcp-state.json` | — | `enabledMcpjsonServers`, `disabledMcpjsonServers`, `enableAllProjectMcpServers` |
+| Memória de longo prazo | `~/.kronos/projects/<projeto>/memory.jsonl` | — | — |
+| Conversas salvas | `~/.kronos/projects/<projeto>/sessions/` | — | — |
+| Trace de cada sessão | `~/.kronos/sessions/` | — | — |
+| Preferências da extensão | configurações `kronos.*` do VS Code | — | — |
+
+`KRONOS_HOME` muda a pasta `~/.kronos` (os testes e a avaliação usam uma pasta temporária).
+
+### Instruções (o equivalente ao CLAUDE.md)
+
+Arquivos Markdown com as regras que o agente deve seguir: comandos de build e teste, convenções, o que não fazer. O Kronos os coloca no prompt de sistema no início de cada tarefa, nesta ordem:
+
+1. **Do usuário:** `~/.kronos/KRONOS.md`. Se ele não existir, entra o `~/.claude/CLAUDE.md` como reserva. Só um dos dois é lido.
+2. **Do projeto**, todos os que existirem na raiz: `KRONOS.md`, `AGENTS.md`, `CLAUDE.md`, `.claude/CLAUDE.md` e `CLAUDE.local.md`.
+
+Cada arquivo entra com até 12 000 caracteres. Use `KRONOS.md` para o que vale só para o Kronos e `AGENTS.md` para o que vale para qualquer agente de código. `CLAUDE.local.md`, como no Claude Code, é para as suas notas pessoais do projeto (deixe-o no `.gitignore`).
+
+**Instruções por pasta.** Quando o agente lê um arquivo, o Kronos procura `AGENTS.md`, `CLAUDE.md` e `KRONOS.md` em cada pasta entre a raiz e esse arquivo e os entrega junto com o conteúdo, uma vez por conversa e com até 8 000 caracteres cada. Assim as regras de `db/` ou `api/src/modules/escola/` chegam só quando o trabalho passa por ali, sem pesar no prompt das outras tarefas.
+
+**Criar o arquivo.** `/init` faz o agente explorar o projeto e escrever (ou melhorar) o `AGENTS.md` com os comandos de instalação, build, testes e execução, a arquitetura em poucas linhas e as regras que não dá para adivinhar lendo o código.
+
+**Diferenças do Claude Code.** O Kronos não segue `@imports` dentro desses arquivos e não sobe para as pastas acima da raiz do projeto.
+
+### Skills
+
+Uma skill é uma pasta com um `SKILL.md`, no mesmo formato do Claude Code:
+
+```markdown
+---
+name: nova-migration
+description: Use ao criar ou alterar tabelas do banco (migrations em db/init).
+allowed-tools: bash
+---
+
+# Como criar uma migration
+
+1. Crie `db/init/NNN_descricao.sql` com o próximo número livre.
+2. ...
+```
+
+- **`name`**: como a skill é chamada. Se faltar, vale o nome da pasta.
+- **`description`**: quando usar, em uma frase. Sem ela, a skill é ignorada.
+- **`allowed-tools`** (opcional): ferramentas que a skill libera quando o agente a carrega.
+- Outros arquivos da pasta (exemplos, modelos, referências) ficam disponíveis para o agente ler junto com a skill.
+
+**Onde criar.** Com o mesmo nome, vale a primeira desta lista:
+
+| # | Pasta | Para quê |
+|---|---|---|
+| 1 | `.kronos/skills/<nome>/` | do projeto, só para o Kronos |
+| 2 | `.claude/skills/<nome>/` | do projeto, compartilhada com o Claude Code |
+| 3 | `.agents/skills/<nome>/` | do projeto, compartilhada com outros agentes |
+| 4 | `~/.kronos/skills/<nome>/` | sua, em todos os projetos (é também onde o Kronos grava as que cria sozinho) |
+| 5 | `~/.kronos/plugins/<plugin>/skills/<nome>/` | de um plugin do Kronos, chamada `<plugin>:<nome>` |
+| 6 | `~/.claude/skills/<nome>/` | reserva: suas skills do Claude Code |
+| 7 | skills dos plugins do Claude Code | reserva, chamadas `<plugin>:<nome>` |
+
+Para criar uma skill à mão, crie a pasta e o `SKILL.md`. Ela aparece na próxima conversa (`/clear` ou **Nova conversa**).
+
+**Como o agente usa.** O prompt traz só o nome e a descrição de cada skill. Quando a tarefa combina, o agente carrega o texto completo com a ferramenta `skill`. Você também pode ligar uma skill: digite `/<nome>` (na extensão, ela aparece no menu do `/`) e ela vale para a conversa inteira, inclusive depois da compactação. `/<nome> off` desliga. Sem nenhuma skill, nada muda no prompt nem nas ferramentas. Na avaliação, com uma regra de projeto que só existia numa skill, o acerto subiu de 12/20 para 19/20, e o agente carregou a skill nas 20 execuções.
+
+**Skills criadas pelo próprio Kronos.** Depois de uma tarefa com 10 passos ou mais, uma chamada separada relê a conversa e decide se vale criar ou atualizar uma skill para aquele *tipo* de tarefa. Isso acontece, por exemplo, quando você corrigiu o jeito de trabalhar do agente ou quando surgiu uma técnica reaproveitável. Ela grava só em `~/.kronos/skills/`. As skills do projeto, as dos plugins e as do Claude Code nunca são alteradas, e uma skill nova nunca usa o nome de uma delas. `KRONOS_USER_SKILLS=off` desliga essa revisão e todas as skills de usuário e de plugins (a avaliação roda assim).
+
+### Plugins
+
+Um plugin é uma pasta que agrupa skills e servidores MCP, no mesmo formato dos plugins do Claude Code:
+
+```text
+meu-plugin/
+├── skills/
+│   └── revisar-pr/SKILL.md      → /meu-plugin:revisar-pr
+├── .mcp.json                    → servidores MCP do plugin (opcional)
+└── .claude-plugin/plugin.json   → opcional; "skills": [...] lista as pastas de skills
+```
+
+| Comando | O que faz |
+|---|---|
+| `/plugins` | Lista os plugins em uso, com as skills e os servidores de cada um, marcando os que vêm da reserva do Claude Code |
+| `/plugins instalar <url-git>` | Clona o repositório (`git clone --depth 1`) em `~/.kronos/plugins/<nome>` |
+| `/plugins instalar <pasta>` | Copia a pasta (sem `node_modules`) para `~/.kronos/plugins/<nome>` |
+| `/plugins remover <nome>` | Apaga o plugin de `~/.kronos/plugins` |
+
+A instalação recusa uma pasta que não tenha `skills/`, `.mcp.json` ou `.claude-plugin/`. Ela também recusa um nome que já esteja instalado. Um plugin do Kronos com o mesmo nome de um do Claude Code tem prioridade sobre ele. Os plugins do Claude Code aparecem como reserva e são instalados e removidos pelo próprio Claude Code. Dentro do `.mcp.json` de um plugin, `${CLAUDE_PLUGIN_ROOT}` vira a pasta do plugin. As pastas `commands/`, `agents/` e `hooks/` dos plugins do Claude Code não são usadas.
+
+### MCP
+
+O Kronos é um cliente [MCP](https://modelcontextprotocol.io) para ferramentas. Ele conecta a servidores por **stdio** (um processo local) e por **HTTP** (*streamable HTTP*), lista as ferramentas de cada um e deixa o agente chamá-las, tanto as de leitura (consultar um banco, ler um ticket) quanto as de escrita (executar um comando, criar um registro). Cada servidor stdio é um processo do próprio Kronos: ele sobe na primeira tarefa da conversa e é encerrado quando o Kronos sai.
+
+**De onde vêm os servidores.** O formato é o mesmo do Claude Code (`mcpServers`). Com o mesmo nome, vale o primeiro desta lista:
+
+| # | Fonte | Escopo | Precisa ser liberado? |
+|---|---|---|---|
+| 1 | `.kronos/mcp.json` | este projeto | **sim** |
+| 2 | `~/.kronos/mcp.json` | todos os projetos | não |
+| 3 | `.mcp.json` dos plugins do Kronos | todos os projetos | não |
+| 4 | `.mcp.json` do projeto | este projeto | **sim** |
+| 5 | `projects["<raiz>"].mcpServers` do `~/.claude.json` | este projeto | não (reserva) |
+| 6 | `mcpServers` do `~/.claude.json` | todos os projetos | não (reserva) |
+| 7 | `.mcp.json` dos plugins do Claude Code | todos os projetos | não (reserva) |
+
+**Servidores do projeto precisam ser liberados.** `.kronos/mcp.json` e `.mcp.json` vêm junto com o repositório, então um projeto clonado poderia rodar qualquer comando na sua máquina. Por isso um servidor dessas fontes só sobe depois de `/mcp ligar <servidor>`. Uma aprovação já feita no Claude Code também vale, como reserva. Até ser liberado, o `/mcp` mostra o servidor como bloqueado e diz o comando.
+
+| Comando | O que faz |
+|---|---|
+| `/mcp` | Lista os servidores: de onde vieram, quantas ferramentas têm e quais estão bloqueados ou falharam |
+| `/mcp ligar <servidor>` | Libera um servidor do projeto ou religa um desligado, neste projeto |
+| `/mcp desligar <servidor>` | Desliga um servidor neste projeto, de qualquer fonte |
+| `/mcp importar` | Copia **uma vez** os servidores do `~/.claude.json` para o `~/.kronos/mcp.json`, sem sobrescrever os que já existem lá; dali em diante, mudanças no Claude Code não afetam esses servidores no Kronos |
+
+Ligar e desligar ficam gravados em `~/.kronos/mcp-state.json`, por projeto, e reconectam os servidores na hora. Uma conversa já aberta passa a usar as ferramentas novas a partir da próxima mensagem. Os arquivos que o Kronos grava em `~/.kronos` (`mcp.json` e `mcp-state.json`) ficam com permissão `600`, porque podem conter tokens.
+
+**Variáveis.** Qualquer texto da configuração aceita `${VAR}` e `${VAR:-padrão}`, expandidos com as variáveis de ambiente do Kronos. Assim os tokens ficam fora do arquivo; o `/mcp importar` copia o texto sem expandir.
+
+```json
+{
+  "mcpServers": {
+    "banco": {
+      "command": "node",
+      "args": ["/caminho/do/servidor/server.mjs"],
+      "env": { "DATABASE_URL": "${DATABASE_URL}" }
+    },
+    "tickets": {
+      "type": "http",
+      "url": "https://mcp.exemplo.com/mcp",
+      "headers": { "Authorization": "Bearer ${TICKETS_TOKEN}" }
+    }
+  }
+}
+```
+
+**Como o agente usa as ferramentas.**
+
+- **Nomes.** Cada ferramenta vira `mcp__<servidor>__<ferramenta>` (ex.: `mcp__banco__consultar`).
+- **Carregadas sob demanda.** As ferramentas de um servidor formam o grupo `mcp:<servidor>`. O prompt cita só o grupo e os nomes; as descrições e os esquemas completos entram quando o agente chama `load_tools` com aquele grupo. Um servidor com dezenas de ferramentas não pesa nos passos que não precisam dele.
+- **Permissões.** Ferramenta marcada pelo servidor como só leitura (`readOnlyHint`) roda sem perguntar. As demais seguem o modo:
+  - `ask`: pergunta antes de cada chamada, com a opção de sempre permitir aquela ferramenta na sessão.
+  - `auto`: roda direto. **Atenção:** isso inclui uma ferramenta de escrita, como executar SQL num banco.
+  - `read-only`: bloqueia.
+- **Agentes auxiliares.** O explorador e o crítico recebem só as ferramentas de leitura; o executor recebe todas.
+- **Falhas.** Um servidor que não sobe (comando inexistente, URL fora do ar, 20 s sem resposta) não interrompe a conversa: aparece com o erro no `/mcp`, e as outras ferramentas continuam funcionando. Quando a própria ferramenta devolve um erro, ele volta para o agente, que pode corrigir a chamada.
+- **Não suportado.** O transporte SSE antigo (`"type": "sse"`; use `"type": "http"`), além de *resources* e *prompts* do MCP. Só as ferramentas são usadas.
+
+### Variáveis de ambiente
+
+| Variável | Efeito |
+|---|---|
+| `KRONOS_HOME` | pasta de configuração e dados (padrão `~/.kronos`) |
+| `KRONOS_CLAUDE_CONFIG=off` | desliga a reserva do Claude Code: `~/.claude/CLAUDE.md`, `~/.claude/skills`, plugins, `~/.claude.json` e as aprovações de MCP do Claude Code |
+| `KRONOS_MCP=off` | desliga o MCP inteiro |
+| `KRONOS_USER_SKILLS=off` | só as skills do projeto: desliga as de usuário, as de plugins e a criação automática |
+| `KRONOS_MODEL`, `KRONOS_LANG`, `KRONOS_EMBED_MODEL`, `KRONOS_REVIEW_MODEL` | padrões de `--model`, `--lang`, `--embed-model` e `--review-model` |
+| `OLLAMA_HOST`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_BASE_URL` | acesso aos provedores |
+
+### Equivalências com o Claude Code
+
+| No Claude Code | No Kronos |
+|---|---|
+| `~/.claude/CLAUDE.md` | `~/.kronos/KRONOS.md` (o do Claude Code entra como reserva) |
+| `CLAUDE.md`, `.claude/CLAUDE.md`, `CLAUDE.local.md` | lidos igual, junto com `KRONOS.md` e `AGENTS.md` |
+| `~/.claude/skills`, `.claude/skills` | `~/.kronos/skills`, `.kronos/skills` (os do Claude Code também são lidos) |
+| `/plugin install` | `/plugins instalar <url-git-ou-pasta>` |
+| `claude mcp add`, `.mcp.json` | `~/.kronos/mcp.json`, `.kronos/mcp.json` (ou `/mcp importar`) |
+| aprovar servidores do `.mcp.json` | `/mcp ligar <servidor>` |
+| `/mcp` | `/mcp` |
+| `/init` | `/init` (escreve `AGENTS.md`) |
+| `/compact`, `/clear`, `/usage` | `/compact [foco]`, `/clear`, `/usage` |
 
 ## Edição de arquivos
 

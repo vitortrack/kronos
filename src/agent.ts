@@ -7,7 +7,7 @@ import { agentJudge } from './judge.js';
 import type { Session } from './session.js';
 import { allTools, cleanPath, describeInput, offload, permit, suggestPath, toolLoader, type Tool, type ToolContext } from './tools.js';
 import type { ContextUse, Image, Provider, ToolCall, ToolResult } from './types.js';
-import { mcpHub } from './mcp.js';
+import { mcpHub, type McpHub } from './mcp.js';
 import type { AgentUI } from './agent-ui.js';
 import { validateInput } from './validate.js';
 import fs from 'node:fs';
@@ -98,18 +98,19 @@ export class Agent {
     });
   }
 
-  private mcpAttached = false;
+  private mcp: McpHub | null = null;
 
   private async attachMcp(): Promise<void> {
-    if (this.mcpAttached || this.session.cfg.tools) return;
-    this.mcpAttached = true;
-    const usable = (await mcpHub(this.session.cfg.root)).tools.filter(ROLE_TOOLS[this.role]);
-    if (!usable.length) return;
-    this.deferred.push(...usable);
-    const loader = toolLoader(this.deferred, (names) => this.enable(names));
-    const at = this.tools.findIndex((t) => t.name === 'load_tools');
-    if (at >= 0) this.tools[at] = loader;
-    else this.tools.push(loader);
+    if (this.session.cfg.tools) return;
+    const hub = await mcpHub(this.session.cfg.root);
+    if (hub === this.mcp) return;
+    const stale = new Set(this.mcp?.tools ?? []);
+    this.mcp = hub;
+    const keep = (list: Tool[]) => list.splice(0, list.length, ...list.filter((t) => !stale.has(t) && t.name !== 'load_tools'));
+    keep(this.deferred);
+    keep(this.tools);
+    this.deferred.push(...hub.tools.filter(ROLE_TOOLS[this.role]));
+    if (this.deferred.length) this.tools.push(toolLoader(this.deferred, (names) => this.enable(names)));
   }
 
   get canCompact(): boolean {

@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { McpServerStatus } from './mcp.js';
-import { kronosHome } from './paths.js';
+import { kronosHome, readsClaudeConfig } from './paths.js';
+import { pluginPrefix, pluginRoots, type Plugin } from './plugins.js';
 
 export type Skill = { name: string; description: string; dir: string; tools: string[] };
 
@@ -37,52 +37,29 @@ const subdirs = (base: string): string[] => {
   }
 };
 
-export type Plugin = { id: string; root: string };
-
-export function pluginRoots(): Plugin[] {
-  try {
-    const installed = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json'), 'utf8')) as { plugins?: Record<string, Array<{ installPath?: string }>> };
-    return Object.entries(installed.plugins ?? {}).flatMap(([id, entries]) => {
-      const root = entries[0]?.installPath;
-      return root ? [{ id, root }] : [];
+function pluginSkills(source: Plugin['source']): Array<{ dir: string; prefix: string }> {
+  return pluginRoots()
+    .filter((p) => p.source === source)
+    .flatMap(({ id, root }) => {
+      let listed: string[] | undefined;
+      try {
+        listed = (JSON.parse(fs.readFileSync(path.join(root, '.claude-plugin', 'plugin.json'), 'utf8')) as { skills?: string[] }).skills;
+      } catch {
+        listed = undefined;
+      }
+      const dirs = Array.isArray(listed) ? listed.map((d) => path.join(root, d)) : subdirs(path.join(root, 'skills'));
+      return dirs.map((dir) => ({ dir, prefix: pluginPrefix(id) }));
     });
-  } catch {
-    return [];
-  }
 }
 
-export const pluginPrefix = (id: string): string => `${id.split('@')[0]}:`;
-
-function pluginSkills(): Array<{ dir: string; prefix: string }> {
-  return pluginRoots().flatMap(({ id, root }) => {
-    let listed: string[] | undefined;
-    try {
-      listed = (JSON.parse(fs.readFileSync(path.join(root, '.claude-plugin', 'plugin.json'), 'utf8')) as { skills?: string[] }).skills;
-    } catch {
-      listed = undefined;
-    }
-    const dirs = Array.isArray(listed) ? listed.map((d) => path.join(root, d)) : subdirs(path.join(root, 'skills'));
-    return dirs.map((dir) => ({ dir, prefix: pluginPrefix(id) }));
-  });
-}
-
-export function pluginsReport(skills: Skill[], mcp: McpServerStatus[]): string {
-  const plugins = pluginRoots();
-  if (!plugins.length) return 'Nenhum plugin instalado. O Kronos usa os plugins do Claude Code: instale com /plugin no Claude Code e eles aparecem aqui.';
-  const lines = plugins.map(({ id }) => {
-    const own = skills.filter((s) => s.name.startsWith(pluginPrefix(id))).map((s) => s.name.slice(pluginPrefix(id).length));
-    const servers = mcp.filter((s) => s.origin === `plugin ${id}`).map((s) => s.name);
-    const parts = [`${own.length} skill(s)${own.length ? `: ${own.join(', ')}` : ''}`];
-    if (servers.length) parts.push(`MCP: ${servers.join(', ')}`);
-    return `- **${id}** — ${parts.join(' · ')}`;
-  });
-  return ['Plugins do Claude Code em uso (skills com /<plugin>:<skill>):', ...lines].join('\n');
-}
+const plain = (base: string): Array<{ dir: string; prefix: string }> => subdirs(base).map((dir) => ({ dir, prefix: '' }));
 
 function skillCandidates(root: string): Array<{ dir: string; prefix: string }> {
-  const bases = [path.join(root, '.claude', 'skills'), path.join(root, '.agents', 'skills')];
-  const user = process.env.KRONOS_USER_SKILLS === 'off' ? [] : [path.join(os.homedir(), '.claude', 'skills'), managedSkillsDir()];
-  return [...[...bases, ...user].flatMap((base) => subdirs(base).map((dir) => ({ dir, prefix: '' }))), ...(user.length ? pluginSkills() : [])];
+  const project = [path.join(root, '.kronos', 'skills'), path.join(root, '.claude', 'skills'), path.join(root, '.agents', 'skills')].flatMap(plain);
+  if (process.env.KRONOS_USER_SKILLS === 'off') return project;
+  const own = [...plain(managedSkillsDir()), ...pluginSkills('kronos')];
+  if (!readsClaudeConfig()) return [...project, ...own];
+  return [...project, ...own, ...plain(path.join(os.homedir(), '.claude', 'skills')), ...pluginSkills('claude')];
 }
 
 export function findSkills(root: string): Skill[] {

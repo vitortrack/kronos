@@ -10,3 +10,5 @@ export function projectDataDir(root: string): string {
   const id = createHash('sha1').update(path.resolve(root)).digest('hex').slice(0, 10);
   return path.join(kronosHome(), 'projects', `${path.basename(root)}-${id}`);
 }
+
+export const readsClaudeConfig = (): boolean => process.env.KRONOS_CLAUDE_CONFIG !== 'off';

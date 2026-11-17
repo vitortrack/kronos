@@ -4,6 +4,8 @@ import { Agent } from './agent.js';
 import type { Criterion } from './contract.js';
 import { MemoryStore } from './memory.js';
 import { findSkills, type Skill } from './skills.js';
+import { installPlugin, pluginsReport, removePlugin } from './plugins.js';
+import { closeMcp, mcpHub } from './mcp.js';
 import { reviewSkills, type ReviewInput } from './skill-review.js';
 import type { Role } from './prompts.js';
 import { AnthropicProvider, type Effort } from './providers/anthropic.js';
@@ -185,6 +187,27 @@ export class Session {
     };
   }
 
+  async plugins(arg: string): Promise<string> {
+    const [action = '', target = ''] = arg.trim().split(/\s+/);
+    const actions: Record<string, () => Promise<string>> = {
+      instalar: () => installPlugin(target),
+      remover: async () => removePlugin(target),
+    };
+    const run = actions[action];
+    if (action && !run) return 'use /plugins, /plugins instalar <url-git-ou-pasta> ou /plugins remover <nome>';
+    let message = '';
+    if (run) {
+      try {
+        message = `${await run()}.\n\n`;
+      } catch (e) {
+        return e instanceof Error ? e.message : String(e);
+      }
+      this.skills.splice(0, this.skills.length, ...findSkills(this.cfg.root));
+      closeMcp();
+    }
+    return message + pluginsReport(this.skills, (await mcpHub(this.cfg.root)).servers);
+  }
+
   async usageReport(): Promise<UsageReport> {
     const context = this.contextBar();
     const account: UsageReport = this.cfg.provider === 'openai' ? await openRouterUsage() : { bars: [] };
@@ -306,6 +329,7 @@ export class Session {
   }
 
   reset(): void {
+    this.skills.splice(0, this.skills.length, ...findSkills(this.cfg.root));
     this.main = new Agent(this, 'main', this.ui);
     this.plan = [];
     this.allowed.clear();

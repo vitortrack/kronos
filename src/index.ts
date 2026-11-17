@@ -8,8 +8,7 @@ import { orchestrate } from './orchestrator.js';
 import { gateFor } from './gate.js';
 import { agentJudge } from './judge.js';
 import { INIT_TASK, LANGUAGE_NAMES, languageName } from './prompts.js';
-import { closeMcp, mcpHub, mcpReport } from './mcp.js';
-import { pluginsReport } from './skills.js';
+import { closeMcp, mcpCommand } from './mcp.js';
 import type { Effort } from './providers/anthropic.js';
 import { DEFAULT_EMBED_MODEL, DEFAULT_MODEL, Session, type Config } from './session.js';
 import type { Mode } from './tools.js';
@@ -47,7 +46,7 @@ Opções:
       --fork                         com -c ou -r: continua numa cópia, sem alterar a original
   -h, --help
 
-Variáveis: OLLAMA_HOST, ANTHROPIC_API_KEY, OPENROUTER_API_KEY, OPENAI_BASE_URL, KRONOS_MODEL, KRONOS_SANDBOX, KRONOS_EMBED_MODEL, KRONOS_LANG`;
+Variáveis: OLLAMA_HOST, ANTHROPIC_API_KEY, OPENROUTER_API_KEY, OPENAI_BASE_URL, KRONOS_MODEL, KRONOS_SANDBOX, KRONOS_EMBED_MODEL, KRONOS_LANG, KRONOS_HOME, KRONOS_MCP, KRONOS_CLAUDE_CONFIG, KRONOS_USER_SKILLS`;
 
 const COMMANDS = `Comandos:
   /plan                    mostra o plano atual
@@ -61,8 +60,10 @@ const COMMANDS = `Comandos:
   /memory                  lista a memória de longo prazo do projeto
   /usage                   tokens, custo e contexto da conversa; no openai, gasto e saldo do OpenRouter
   /compact [foco]          resume o histórico agora para gastar menos tokens nos próximos passos
-  /mcp                     servidores MCP conectados e suas ferramentas
-  /plugins                 plugins do Claude Code em uso (skills e MCP)
+  /mcp [ligar|desligar <servidor> | importar]
+                           servidores MCP; liga, desliga ou traz os do Claude Code
+  /plugins [instalar <url-ou-pasta> | remover <nome>]
+                           plugins em uso, com skills e servidores MCP
   /init                    cria ou melhora o AGENTS.md com os comandos e regras do projeto
   /sessions                lista as conversas salvas deste projeto
   /resume <id>             retoma uma conversa salva
@@ -346,10 +347,10 @@ async function main(): Promise<void> {
         break;
       }
       case '/mcp':
-        ui.final(mcpReport(await mcpHub(cfg.root)));
+        ui.final(await mcpCommand(cfg.root, arg));
         break;
       case '/plugins':
-        ui.final(pluginsReport(session.skills, (await mcpHub(cfg.root)).servers));
+        ui.final(await session.plugins(arg));
         break;
       case '/init':
         await execute(INIT_TASK, false);

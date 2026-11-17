@@ -3,9 +3,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
-import { kronosHome } from './paths.js';
+import { kronosHome, readsClaudeConfig } from './paths.js';
 import { sseData } from './providers/openai.js';
-import { pluginRoots } from './skills.js';
+import { pluginRoots } from './plugins.js';
 import type { Tool } from './tools.js';
 import type { ToolSpec } from './types.js';
 
@@ -30,6 +30,7 @@ export interface McpServerStatus {
   origin: string;
   tools: number;
   error?: string;
+  blocked?: boolean;
 }
 
 export interface McpHub {
@@ -71,7 +72,21 @@ const expand = (value: string, vars: Record<string, string | undefined>): string
 const expandConfig = (config: McpServerConfig, vars: Record<string, string | undefined>): McpServerConfig =>
   JSON.parse(JSON.stringify(config), (_, v: unknown) => (typeof v === 'string' ? expand(v, vars) : v)) as McpServerConfig;
 
-function projectApproval(root: string, claude: ClaudeJson | null): (name: string) => boolean {
+type McpState = { projects?: Record<string, { enabled?: string[]; disabled?: string[] }> };
+type Layer = { origin: string; servers: ServerMap; vars: Record<string, string | undefined>; needsApproval?: boolean };
+
+const stateFile = (): string => path.join(kronosHome(), 'mcp-state.json');
+const userConfigFile = (): string => path.join(kronosHome(), 'mcp.json');
+
+const readState = (): McpState => (readJson(stateFile()) as McpState | null) ?? {};
+
+function writeJson(file: string, value: unknown): void {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
+  fs.chmodSync(file, 0o600);
+}
+
+function claudeApproval(root: string, claude: ClaudeJson | null): (name: string) => boolean {
   const settings = [claude?.projects?.[root], readJson(path.join(root, '.claude', 'settings.json')), readJson(path.join(root, '.claude', 'settings.local.json'))] as Array<ClaudeProject | null | undefined>;
   return (name) => {
     if (settings.some((s) => s?.disabledMcpjsonServers?.includes(name))) return false;
@@ -79,26 +94,96 @@ function projectApproval(root: string, claude: ClaudeJson | null): (name: string
   };
 }
 
+const pluginLayers = (source: 'kronos' | 'claude'): Layer[] =>
+  pluginRoots()
+    .filter((p) => p.source === source)
+    .map((p) => ({ origin: `plugin ${p.id}`, servers: serversIn(readJson(path.join(p.root, '.mcp.json'))), vars: { ...process.env, CLAUDE_PLUGIN_ROOT: p.root } }));
+
+function layers(root: string, claude: ClaudeJson | null): Layer[] {
+  const own: Layer[] = [
+    { origin: '.kronos/mcp.json', servers: serversIn(readJson(path.join(root, '.kronos', 'mcp.json'))), vars: process.env, needsApproval: true },
+    { origin: '~/.kronos/mcp.json', servers: serversIn(readJson(userConfigFile())), vars: process.env },
+    ...pluginLayers('kronos'),
+    { origin: '.mcp.json', servers: serversIn(readJson(path.join(root, '.mcp.json'))), vars: process.env, needsApproval: true },
+  ];
+  if (!readsClaudeConfig()) return own;
+  return [
+    ...own,
+    { origin: '~/.claude.json (projeto)', servers: claude?.projects?.[root]?.mcpServers ?? {}, vars: process.env },
+    { origin: '~/.claude.json', servers: claude?.mcpServers ?? {}, vars: process.env },
+    ...pluginLayers('claude'),
+  ];
+}
+
+const NOT_APPROVED = (name: string): string => `servidor do projeto ainda não aprovado: libere com /mcp ligar ${name}`;
+const TURNED_OFF = (name: string): string => `desligado neste projeto: religue com /mcp ligar ${name}`;
+
 export function mcpSources(root: string): McpSource[] {
   if (process.env.KRONOS_MCP === 'off') return [];
-  const claude = readJson(path.join(os.homedir(), '.claude.json')) as ClaudeJson | null;
-  const approved = projectApproval(root, claude);
-  const layers: Array<{ origin: string; servers: ServerMap; vars: Record<string, string | undefined>; needsApproval?: boolean }> = [
-    ...pluginRoots().map((p) => ({ origin: `plugin ${p.id}`, servers: serversIn(readJson(path.join(p.root, '.mcp.json'))), vars: { ...process.env, CLAUDE_PLUGIN_ROOT: p.root } })),
-    { origin: '~/.claude.json', servers: claude?.mcpServers ?? {}, vars: process.env },
-    { origin: '~/.kronos/mcp.json', servers: serversIn(readJson(path.join(kronosHome(), 'mcp.json'))), vars: process.env },
-    { origin: '.mcp.json', servers: serversIn(readJson(path.join(root, '.mcp.json'))), vars: process.env, needsApproval: true },
-    { origin: '~/.claude.json (projeto)', servers: claude?.projects?.[root]?.mcpServers ?? {}, vars: process.env },
-  ];
+  const claude = readsClaudeConfig() ? (readJson(path.join(os.homedir(), '.claude.json')) as ClaudeJson | null) : null;
+  const fromClaude = readsClaudeConfig() ? claudeApproval(root, claude) : () => false;
+  const project = readState().projects?.[root] ?? {};
   const found = new Map<string, McpSource>();
-  for (const { origin, servers, vars, needsApproval } of layers) {
+  for (const { origin, servers, vars, needsApproval } of layers(root, claude)) {
     for (const [name, config] of Object.entries(servers)) {
+      if (found.has(name)) continue;
       const source: McpSource = { name, origin, config: expandConfig(config, vars) };
-      if (needsApproval && !approved(name)) source.blocked = 'servidor do .mcp.json do projeto ainda não aprovado: aprove no Claude Code (/mcp) ou copie a entrada para ~/.kronos/mcp.json';
+      if (needsApproval && !project.enabled?.includes(name) && !fromClaude(name)) source.blocked = NOT_APPROVED(name);
+      if (project.disabled?.includes(name)) source.blocked = TURNED_OFF(name);
       found.set(name, source);
     }
   }
   return [...found.values()];
+}
+
+function setServer(root: string, name: string, on: boolean): string {
+  if (!mcpSources(root).some((s) => s.name === name)) throw new Error(`não há servidor MCP chamado "${name}"; veja os nomes com /mcp`);
+  const state = readState();
+  const project = ((state.projects ??= {})[root] ??= {});
+  const without = (list: string[] | undefined) => (list ?? []).filter((n) => n !== name);
+  project.enabled = without(project.enabled);
+  project.disabled = without(project.disabled);
+  if (on) project.enabled.push(name);
+  else project.disabled.push(name);
+  writeJson(stateFile(), state);
+  if (on) return `${name} ligado neste projeto`;
+  return `${name} desligado neste projeto`;
+}
+
+function importFromClaude(): string {
+  const claude = readJson(path.join(os.homedir(), '.claude.json')) as ClaudeJson | null;
+  const incoming = claude?.mcpServers ?? {};
+  const current = (readJson(userConfigFile()) as { mcpServers?: ServerMap } | null) ?? {};
+  const servers = (current.mcpServers ??= {});
+  const added = Object.keys(incoming).filter((name) => !servers[name]);
+  for (const name of added) servers[name] = incoming[name]!;
+  if (added.length) writeJson(userConfigFile(), current);
+  const kept = Object.keys(incoming).filter((name) => !added.includes(name));
+  const parts = [added.length ? `importados para ~/.kronos/mcp.json: ${added.join(', ')}` : 'nenhum servidor novo no ~/.claude.json'];
+  if (kept.length) parts.push(`já existiam no Kronos e ficaram como estavam: ${kept.join(', ')}`);
+  return parts.join('; ');
+}
+
+const MCP_USAGE = 'use /mcp, /mcp ligar <servidor>, /mcp desligar <servidor> ou /mcp importar';
+
+export async function mcpCommand(root: string, arg: string): Promise<string> {
+  const [action = '', name = ''] = arg.trim().split(/\s+/);
+  const actions: Record<string, () => string> = {
+    ligar: () => setServer(root, name, true),
+    desligar: () => setServer(root, name, false),
+    importar: importFromClaude,
+  };
+  if (!action) return mcpReport(await mcpHub(root));
+  const run = actions[action];
+  if (!run) return MCP_USAGE;
+  let message: string;
+  try {
+    message = run();
+  } catch (e) {
+    return e instanceof Error ? e.message : String(e);
+  }
+  closeMcp();
+  return `${message}.\n\n${mcpReport(await mcpHub(root))}`;
 }
 
 function abortable<T>(promise: Promise<T>, signal: AbortSignal | undefined, onAbort: () => void): Promise<T> {
@@ -288,7 +373,7 @@ process.once('exit', closeMcp);
 
 export async function connectMcp(source: McpSource, root: string): Promise<{ status: McpServerStatus; tools: Tool[] }> {
   const { name, origin } = source;
-  if (source.blocked) return { status: { name, origin, tools: 0, error: source.blocked }, tools: [] };
+  if (source.blocked) return { status: { name, origin, tools: 0, error: source.blocked, blocked: true }, tools: [] };
   let transport: Transport | undefined;
   try {
     transport = transportFor(source.config, root);
@@ -321,11 +406,12 @@ export function mcpHub(root: string): Promise<McpHub> {
 }
 
 function serverLine(s: McpServerStatus): string {
+  if (s.blocked) return `- **${s.name}** (${s.origin}): bloqueado — ${s.error}`;
   if (s.error) return `- **${s.name}** (${s.origin}): falhou — ${s.error}`;
   return `- **${s.name}** (${s.origin}): ${s.tools} ferramenta(s)`;
 }
 
 export function mcpReport(hub: McpHub): string {
-  if (!hub.servers.length) return 'Nenhum servidor MCP configurado. O Kronos lê o .mcp.json do projeto, o ~/.kronos/mcp.json e os servidores do Claude Code (~/.claude.json e plugins).';
-  return ['Servidores MCP (as ferramentas entram quando o agente carrega o grupo mcp:<servidor>):', ...hub.servers.map(serverLine)].join('\n');
+  if (!hub.servers.length) return 'Nenhum servidor MCP configurado. Configure em ~/.kronos/mcp.json (todos os projetos) ou .kronos/mcp.json (este projeto), ou traga os do Claude Code com /mcp importar.';
+  return ['Servidores MCP (os do Kronos têm prioridade; os do Claude Code entram como reserva):', ...hub.servers.map(serverLine), '', MCP_USAGE].join('\n');
 }

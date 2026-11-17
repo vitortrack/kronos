@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { readMemories } from './memory.js';
+import { kronosHome, readsClaudeConfig } from './paths.js';
 import type { Skill } from './skills.js';
 
 export type Role = 'main' | 'worker' | 'explorer' | 'critic';
@@ -114,9 +115,15 @@ function gitInfo(root: string): string {
   }
 }
 
+function userDoc(): { name: string; content: string } {
+  const own = readIfExists(path.join(kronosHome(), 'KRONOS.md'));
+  if (own || !readsClaudeConfig()) return { name: '~/.kronos/KRONOS.md', content: own };
+  return { name: '~/.claude/CLAUDE.md', content: readIfExists(path.join(os.homedir(), '.claude', 'CLAUDE.md')) };
+}
+
 export function projectDocs(root: string): string {
-  return ['KRONOS.md', 'AGENTS.md', 'CLAUDE.md', '.claude/CLAUDE.md']
-    .map((name) => ({ name, content: readIfExists(path.join(root, name)) }))
+  const project = ['KRONOS.md', 'AGENTS.md', 'CLAUDE.md', '.claude/CLAUDE.md', 'CLAUDE.local.md'].map((name) => ({ name, content: readIfExists(path.join(root, name)) }));
+  return [userDoc(), ...project]
     .filter((d) => d.content)
     .map((d) => `<file name="${d.name}">\n${d.content}\n</file>`)
     .join('\n');

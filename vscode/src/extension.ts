@@ -7,19 +7,19 @@ import { bestOf } from '../../src/attempts.js';
 import { orchestrate } from '../../src/orchestrator.js';
 import { DEFAULT_EMBED_MODEL, DEFAULT_MODEL, Session, type Config, type ProviderName } from '../../src/session.js';
 import { SessionStore } from '../../src/sessions.js';
-import { findSkills, pluginsReport, skillCommand } from '../../src/skills.js';
+import { findSkills, skillCommand } from '../../src/skills.js';
 import { THINKING_WORDS } from '../../src/thinking-words.js';
 import type { Decision, Mode, PlanItem } from '../../src/tools.js';
 import type { Image, Usage } from '../../src/types.js';
-import { mcpHub, mcpReport } from '../../src/mcp.js';
+import { mcpCommand } from '../../src/mcp.js';
 import { INIT_TASK } from '../../src/prompts.js';
 
 const BUILTIN_COMMANDS = [
   { name: 'usage', description: 'tokens, custo e contexto da conversa; no OpenRouter, gasto e saldo da conta' },
   { name: 'compact', description: 'resume o histórico agora para gastar menos tokens (opcional: o que manter em foco)' },
   { name: 'clear', description: 'começa uma conversa nova' },
-  { name: 'mcp', description: 'servidores MCP conectados e suas ferramentas' },
-  { name: 'plugins', description: 'plugins do Claude Code em uso (skills e MCP)' },
+  { name: 'mcp', description: 'servidores MCP; ligar|desligar <servidor> ou importar (traz os do Claude Code)' },
+  { name: 'plugins', description: 'plugins em uso; instalar <url-git-ou-pasta> ou remover <nome>' },
   { name: 'init', description: 'cria ou melhora o AGENTS.md com os comandos e regras do projeto' },
 ];
 
@@ -383,8 +383,11 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
     },
     compact: (session, arg) => this.compact(session, arg),
     clear: async () => this.newChat(),
-    mcp: async (session) => this.post({ type: 'final', text: mcpReport(await mcpHub(session.cfg.root)) }),
-    plugins: async (session) => this.post({ type: 'final', text: pluginsReport(session.skills, (await mcpHub(session.cfg.root)).servers) }),
+    mcp: async (session, arg) => this.post({ type: 'final', text: await mcpCommand(session.cfg.root, arg) }),
+    plugins: async (session, arg) => {
+      this.post({ type: 'final', text: await session.plugins(arg) });
+      this.post({ type: 'skills', skills: [...BUILTIN_COMMANDS, ...session.skills.map(({ name, description }) => ({ name, description }))] });
+    },
   };
 
   private async compact(session: Session, focus: string): Promise<void> {
