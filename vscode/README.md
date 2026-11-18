@@ -1,6 +1,6 @@
 # Kronos para VS Code
 
-Chat com o agente de código autônomo Kronos na barra lateral (ícone do relógio).
+Chat com o agente de código autônomo Kronos na barra lateral (ícone do Kronos, o rosto com a foice).
 
 - Pergunte sobre o código ou peça alterações: ele investiga, altera, verifica e passa por um revisor independente.
 - Referências `arquivo:linha` nas respostas abrem o arquivo na linha.
@@ -37,7 +37,7 @@ Prefere o Claude? Exporte `ANTHROPIC_API_KEY` no ambiente em que o VS Code abre.
 
 ![Configurações do Kronos](media/guide/06-settings.png)
 
-**4. Use o chat:** ícone do relógio na barra lateral → pergunta ou tarefa → **Enviar**. O seletor ao lado troca o modelo.
+**4. Use o chat:** ícone do Kronos na barra lateral → pergunta ou tarefa → **Enviar**. O seletor ao lado troca o modelo.
 
 ![Chat do Kronos](media/guide/07-chat.png)
 
