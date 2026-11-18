@@ -154,7 +154,7 @@ async function hasVision(model: string): Promise<boolean> {
 
 const hasAnthropicKey = (): boolean => Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
 const CLAUDE_MODELS = hasAnthropicKey() ? ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'] : [];
-const OPENROUTER_MODELS = process.env.OPENROUTER_API_KEY ? [DEFAULT_MODEL.openai, 'z-ai/glm-5.2'] : [];
+const OPENROUTER_MODELS = process.env.OPENROUTER_API_KEY ? [DEFAULT_MODEL.openai, 'z-ai/glm-5.2', 'anthropic/claude-opus-5.5'] : [];
 
 async function localModels(current: string): Promise<string[]> {
   try {

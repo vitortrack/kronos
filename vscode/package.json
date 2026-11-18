@@ -2,7 +2,7 @@
   "name": "kronos",
   "displayName": "Kronos — Agente de Código",
   "description": "Agente de código autônomo em formato de chat: ReAct, planejamento, revisão independente e multiagente — local com Ollama ou com Claude.",
-  "version": "0.1.36",
+  "version": "0.1.37",
   "publisher": "vitortrack",
   "license": "MIT",
   "repository": {
