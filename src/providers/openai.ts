@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { UsageBar, UsageReport } from '../types.js';
 import { CLOUD_CTX_CAP, OllamaProvider, type OllamaChunk, type OllamaMessage } from './ollama.js';
@@ -53,7 +54,11 @@ export async function* sseData(res: Response): AsyncGenerator<string> {
   }
 }
 
+const CLAUDE_MAX_OUTPUT = 32_000;
+
 export class OpenAICompatProvider extends OllamaProvider {
+  private readonly sessionId = randomUUID();
+
   constructor(
     model: string,
     private readonly baseUrl = process.env.OPENAI_BASE_URL ?? 'https://openrouter.ai/api/v1',
@@ -97,6 +102,7 @@ export class OpenAICompatProvider extends OllamaProvider {
           messages: toOpenAIMessages(messages),
           ...(tools?.length ? { tools } : {}),
           ...(stream ? { stream_options: { include_usage: true }, usage: { include: true } } : {}),
+          ...(this.model.startsWith('anthropic/') ? { cache_control: { type: 'ephemeral' }, session_id: this.sessionId, max_tokens: CLAUDE_MAX_OUTPUT } : {}),
         }),
         signal,
       });

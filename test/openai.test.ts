@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { OpenAICompatProvider, openRouterUsage } from '../src/providers/openai.js';
 import type { StepRequest } from '../src/types.js';
 
-type Sent = { url: string; auth: string; body: { stream: boolean; messages: { role: string; content: string | null; tool_call_id?: string; tool_calls?: { id: string; function: { arguments: string } }[] }[] } };
+type Sent = { url: string; auth: string; body: { stream: boolean; cache_control?: unknown; session_id?: string; max_tokens?: number; messages: { role: string; content: string | null; tool_call_id?: string; tool_calls?: { id: string; function: { arguments: string } }[] }[] } };
 
 const sse = (...events: object[]) => new Response(events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join('') + 'data: [DONE]\n\n');
 
@@ -141,4 +141,21 @@ test('usage explains what is missing when there is no key or no answer', async (
     throw new Error('offline');
   }) as typeof fetch;
   assert.match((await openRouterUsage('https://router.test/v1', 'k')).error ?? '', /não respondeu/);
+});
+
+test('Claude models through OpenRouter get prompt caching, a sticky session and a bounded max_tokens; other models do not', async () => {
+  const sent = stub();
+  const claude = new OpenAICompatProvider('anthropic/claude-opus-5.5', 'https://router.test/v1', 'k');
+  claude.addUser('oi');
+  await claude.step(req);
+  await claude.step(req);
+  assert.deepEqual(sent[0]!.body.cache_control, { type: 'ephemeral' });
+  assert.equal(sent[0]!.body.max_tokens, 32_000);
+  assert.ok(sent[0]!.body.session_id);
+  assert.equal(sent[1]!.body.session_id, sent[0]!.body.session_id);
+  const qwen = new OpenAICompatProvider('qwen/qwen3-coder-next', 'https://router.test/v1', 'k');
+  qwen.addUser('oi');
+  await qwen.step(req);
+  assert.equal(sent[2]!.body.cache_control, undefined);
+  assert.equal(sent[2]!.body.max_tokens, undefined);
 });
