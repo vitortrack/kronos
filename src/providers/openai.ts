@@ -72,7 +72,7 @@ export class OpenAICompatProvider extends OllamaProvider {
     const { stream, messages, tools } = body as Body;
     let res = await this.send({ stream, messages, tools }, signal);
     for (const delay of this.retryDelaysMs) {
-      if (res.status !== 429) break;
+      if (res.status !== 429 && res.status < 500) break;
       await res.body?.cancel();
       await sleep(delay, undefined, { signal });
       res = await this.send({ stream, messages, tools }, signal);

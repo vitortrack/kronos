@@ -71,7 +71,7 @@ class Scripted implements Provider {
 
 test('task harness: the refined harness text opens the task, before the request', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'kronos-test-'));
-  const cfg: Config = { provider: 'ollama', model: 'mock', mode: 'auto', root, maxSteps: 5, review: false, effort: 'high', numCtx: 8192, embedModel: 'none', tokenBudget: 0, lang: 'pt-BR', logDir: null, harness: 'Steps:\n1. migration first' };
+  const cfg: Config = { provider: 'ollama', model: 'mock', mode: 'auto', root, maxSteps: 5, review: false, effort: 'high', numCtx: 8192, tokenBudget: 0, lang: 'pt-BR', logDir: null, harness: 'Steps:\n1. migration first' };
   const provider = new Scripted([
     (user) => {
       assert.match(user[0]!, /^<task_harness>\nSteps:\n1\. migration first\n<\/task_harness>\n\nmake the widget/);

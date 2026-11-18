@@ -5,7 +5,7 @@ import * as vscode from 'vscode';
 import type { AgentUI } from '../../src/agent-ui.js';
 import { bestOf } from '../../src/attempts.js';
 import { orchestrate } from '../../src/orchestrator.js';
-import { DEFAULT_EMBED_MODEL, DEFAULT_MODEL, Session, type Config, type ProviderName } from '../../src/session.js';
+import { DEFAULT_MODEL, Session, type Config, type ProviderName } from '../../src/session.js';
 import { SessionStore } from '../../src/sessions.js';
 import { findSkills, skillCommand } from '../../src/skills.js';
 import { THINKING_WORDS } from '../../src/thinking-words.js';
@@ -118,7 +118,6 @@ function readConfig(root: string): Config {
     review: c.get<boolean>('review', false) || Boolean(c.get<string>('reviewModel', '')),
     effort: 'high',
     numCtx: 65536,
-    embedModel: c.get<string>('embedModel', DEFAULT_EMBED_MODEL),
     tokenBudget: 0,
     lang: c.get<string>('lang', 'pt-BR'),
     interactive: true,
@@ -261,7 +260,7 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     const cfg = readConfig(root);
     const current = this.session?.cfg;
-    if (!this.session || current?.root !== root || current.provider !== cfg.provider || current.model !== cfg.model || current.embedModel !== cfg.embedModel) {
+    if (!this.session || current?.root !== root || current.provider !== cfg.provider || current.model !== cfg.model) {
       const previous = this.session;
       this.session = new Session(cfg, new WebviewUI(this.post, this.pending));
       if (previous?.turns.length && current?.root === root && current.provider === cfg.provider) {

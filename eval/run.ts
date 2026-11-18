@@ -106,7 +106,6 @@ async function runOne(s: Scenario, run: number): Promise<RunResult> {
     review: s.kind !== 'question' && values.review === 'on',
     effort: 'high',
     numCtx: 65536,
-    embedModel: process.env.KRONOS_EMBED_MODEL ?? 'qwen3-embedding:0.6b',
     tokenBudget: 0,
     lang: 'pt-BR',
     logDir: null,

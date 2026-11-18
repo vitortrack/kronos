@@ -114,6 +114,36 @@ function closestHint(lines: string[], oldLines: string[]): string {
   return `\nDid you mean these lines (${Math.round(best.score * 100)}% similar)?\n${shown}`;
 }
 
+const PLACEHOLDER = [
+  /^(\/\/|#|\/\*|<!--|\*)\s*(\.\.\.|…)\s*((rest|remaining|existing|unchanged|other|previous)\b.*)?$/i,
+  /^(\/\/|#|\/\*|<!--)\s*(rest of (the )?(code|file|method|function|class|component)|existing code|code unchanged|unchanged code)\b/i,
+];
+
+export function omissionPlaceholder(oldString: string, newString: string): string | null {
+  const line = newString.split('\n').find((l) => PLACEHOLDER.some((re) => re.test(l.trim())) && !oldString.includes(l.trim()));
+  return line === undefined ? null : line.trim();
+}
+
+const OVER_ESCAPED = /\\[nt"]/;
+
+export function unescapeOverEscaped(oldString: string, content: string): string | null {
+  if (!OVER_ESCAPED.test(oldString) || content.includes(oldString)) return null;
+  const fixed = oldString.replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"');
+  return content.includes(fixed) ? fixed : null;
+}
+
+const TOKEN_SPLIT = /([()[\]{}:<>=,;])/;
+const escapeRegex = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+function tokenPattern(oldStr: string): RegExp | null {
+  const tokens = oldStr
+    .split(TOKEN_SPLIT)
+    .flatMap((part) => part.split(/\s+/))
+    .filter(Boolean);
+  if (tokens.length < 3) return null;
+  return new RegExp(tokens.map(escapeRegex).join('\\s*'), 'g');
+}
+
 export function applyEdit(content: string, oldString: string, newString: string, replaceAll: boolean): EditResult {
   const crlf = content.includes('\r\n') && !/(^|[^\r])\n/.test(content);
   const text = crlf ? content.replace(/\r\n/g, '\n') : content;
@@ -174,6 +204,17 @@ export function applyEdit(content: string, oldString: string, newString: string,
       const first = hits[0]! + 1;
       return finish(out.join('\n'), first, first + Math.max(newLines.length, 1) - 1, name, hits.length);
     }
+  }
+
+  const pattern = tokenPattern(oldStr);
+  const tokenHits = pattern ? [...text.matchAll(pattern)] : [];
+  if (tokenHits.length === 1 || (tokenHits.length > 1 && replaceAll)) {
+    const first = lineOf(text, tokenHits[0]!.index);
+    const updated = text.replace(pattern!, () => newStr);
+    return finish(updated, first, first + newStr.split('\n').length - 1, 'ignoring spacing between tokens', tokenHits.length);
+  }
+  if (tokenHits.length > 1) {
+    return { ok: false, error: `old_string matches ${tokenHits.length} places when ignoring spacing (lines ${tokenHits.map((h) => lineOf(text, h.index)).join(', ')}). Include more surrounding lines so it identifies exactly one place.` };
   }
 
   const already = newStr.trim() && text.includes(newStr) ? '\nNote: new_string already exists in the file — the change may already be applied.' : '';

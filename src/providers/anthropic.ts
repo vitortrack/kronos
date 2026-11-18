@@ -41,8 +41,9 @@ export class AnthropicProvider implements Provider {
       {
         model: this.model,
         max_tokens: 64000,
-        betas: ['server-side-fallback-2026-07-01'],
+        betas: ['server-side-fallback-2026-07-01', 'compact-2026-01-12'],
         fallbacks: 'default',
+        context_management: { edits: [{ type: 'compact_20260112' }] },
         thinking: { type: 'adaptive', display: 'summarized' },
         output_config: { effort: this.effort },
         cache_control: { type: 'ephemeral' },

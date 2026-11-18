@@ -1,7 +1,7 @@
 {
   "name": "kronos",
   "displayName": "Kronos — Agente de Código",
-  "description": "Agente de código autônomo em formato de chat: ReAct, planejamento, revisão independente, multiagente, RAG e memória — local com Ollama ou com Claude.",
+  "description": "Agente de código autônomo em formato de chat: ReAct, planejamento, revisão independente e multiagente — local com Ollama ou com Claude.",
   "version": "0.1.35",
   "publisher": "vitortrack",
   "license": "MIT",
@@ -112,11 +112,6 @@
           "type": "number",
           "default": 0,
           "description": "Limite de passos por mensagem. 0 = sem limite: o agente só para quando concluir ou quando você clicar em Parar."
-        },
-        "kronos.embedModel": {
-          "type": "string",
-          "default": "qwen3-embedding:0.6b",
-          "description": "Modelo de embedding do Ollama para RAG e memória."
         },
         "kronos.ollamaHost": {
           "type": "string",

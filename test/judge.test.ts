@@ -38,7 +38,7 @@ class Scripted implements Provider {
 function session(providers: Scripted[]): Session {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'kronos-judge-'));
   fs.writeFileSync(path.join(root, 'a.txt'), 'hello\n');
-  const cfg: Config = { provider: 'ollama', model: 'mock', mode: 'auto', root, maxSteps: 10, review: false, effort: 'high', numCtx: 8192, embedModel: 'none', tokenBudget: 0, lang: 'pt-BR', logDir: null };
+  const cfg: Config = { provider: 'ollama', model: 'mock', mode: 'auto', root, maxSteps: 10, review: false, effort: 'high', numCtx: 8192, tokenBudget: 0, lang: 'pt-BR', logDir: null };
   const queue: Scripted[] = [new Scripted([]), ...providers];
   return new Session(cfg, ui, () => queue.shift()!);
 }

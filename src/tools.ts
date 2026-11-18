@@ -2,10 +2,8 @@ import { execFile, spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { applyEdit, snippet } from './editing.js';
-import type { MemoryStore } from './memory.js';
+import { applyEdit, omissionPlaceholder, snippet, unescapeOverEscaped } from './editing.js';
 import { isReadOnlyCommand, programOf } from './shell.js';
-import type { CodeIndex } from './rag.js';
 import { readSkill, type Skill } from './skills.js';
 import { syntaxError } from './syntax.js';
 import type { Input, ToolSpec } from './types.js';
@@ -17,21 +15,17 @@ export type PlanStatus = 'pending' | 'in_progress' | 'done';
 export type PlanItem = { step: string; status: PlanStatus };
 export type DelegateRole = 'explorer' | 'worker';
 export type Decision = 'yes' | 'no' | 'always';
-type BuiltinGroup = 'web' | 'memory' | 'search';
+type BuiltinGroup = 'web';
 export type ToolGroup = BuiltinGroup | `mcp:${string}`;
 
 const TOOL_GROUPS: Record<BuiltinGroup, string> = {
   web: 'fetches a URL (documentation, APIs)',
-  memory: 'saves notes for future sessions',
-  search: 'semantic search over an embedding index of the codebase (slow on first use: it indexes the whole repository)',
 };
 
 export interface ToolContext {
   readonly root: string;
   readonly mode: Mode;
   readonly signal: AbortSignal;
-  readonly codeIndex: CodeIndex;
-  readonly memory: MemoryStore;
   readonly skills: Skill[];
   readonly files: Map<string, number>;
   readonly allowed: Set<string>;
@@ -40,7 +34,6 @@ export interface ToolContext {
   confirm(question: string, alwaysLabel?: string): Promise<Decision>;
   setPlan(plan: PlanItem[]): void;
   delegate(role: DelegateRole, task: string): Promise<string>;
-  afterRpc?(name: string, input: Input): Promise<string>;
 }
 
 export interface Tool extends ToolSpec {
@@ -53,8 +46,6 @@ const MAX_OUTPUT = 20_000;
 export const SAVE_OVER = 1_500;
 const OFFLOAD_HEAD = 2_400;
 const OFFLOAD_TAIL = 3_600;
-const RPC_TOOLS = ['read_file', 'grep', 'glob', 'list_dir', 'bash'];
-const MAX_RPC_CALLS = 50;
 const SCRATCH_DIR = '.kronos';
 const OUTLINE_OVER = 300;
 const WINDOW = 100;
@@ -198,7 +189,6 @@ function permissionScope(tool: Tool, input: Input): { key: string; label: string
     const program = programOf(str(input, 'command'));
     return { key: `bash:${program}`, label: `comandos ${program}` };
   }
-  if (tool.name === 'run_code') return { key: 'run_code', label: 'execução de scripts' };
   return { key: tool.name, label: tool.name };
 }
 
@@ -243,38 +233,10 @@ function htmlToText(html: string): string {
     .trim();
 }
 
-type RpcRequest = { id: number; name: string; args: Input };
-type RpcReply = { output: string } | { error: string };
-
-const RPC_PRELUDE =
-  "const __calls = new Map(); let __id = 0; process.on('message', (m) => { const p = __calls.get(m.id); __calls.delete(m.id); if (!__calls.size) process.channel.unref(); if ('error' in m) p.reject(new Error(m.error)); else p.resolve(m.output); }); process.channel.unref(); globalThis.tools = new Proxy({}, { get: (_, name) => (args = {}) => new Promise((resolve, reject) => { const id = ++__id; __calls.set(id, { resolve, reject }); process.channel.ref(); process.send({ id, name, args }); }) });\n";
-
-function rpcHandler(ctx: ToolContext): (m: RpcRequest) => Promise<RpcReply> {
-  let calls = 0;
-  return async (m) => {
-    if (++calls > MAX_RPC_CALLS) return { error: `Limit of ${MAX_RPC_CALLS} tool calls per script reached.` };
-    const tool = RPC_TOOLS.includes(m.name) ? allTools.find((t) => t.name === m.name) : undefined;
-    if (!tool) return { error: `tools.${m.name} is not available in run_code. Available: ${RPC_TOOLS.join(', ')}.` };
-    const denied = await permit(tool, m.args ?? {}, ctx);
-    if (denied) return { error: denied };
-    try {
-      const output = await tool.run(m.args ?? {}, ctx);
-      const extra = (await ctx.afterRpc?.(m.name, m.args ?? {})) ?? '';
-      return { output: extra ? `${output}\n\n${extra}` : output };
-    } catch (e) {
-      return { error: e instanceof Error ? e.message : String(e) };
-    }
-  };
-}
-
 function runBash(command: string, ctx: ToolContext, timeoutMs: number): Promise<string> {
-  return runProcess('bash', ['-c', command], ctx, timeoutMs);
-}
-
-function runProcess(file: string, args: string[], ctx: ToolContext, timeoutMs: number, rpc?: (m: RpcRequest) => Promise<RpcReply>): Promise<string> {
+  const started = Date.now();
   return new Promise((resolve) => {
-    const child = spawn(file, args, { cwd: ctx.root, detached: true, stdio: rpc ? ['ignore', 'pipe', 'pipe', 'ipc'] : ['ignore', 'pipe', 'pipe'] });
-    if (rpc) child.on('message', (m: RpcRequest) => void rpc(m).then((reply) => child.connected && child.send({ id: m.id, ...reply })));
+    const child = spawn('bash', ['-c', command], { cwd: ctx.root, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '';
     let stopped: string | null = null;
     const killGroup = (reason: string) => {
@@ -285,18 +247,18 @@ function runProcess(file: string, args: string[], ctx: ToolContext, timeoutMs: n
         child.kill('SIGKILL');
       }
     };
-    const onAbort = () => killGroup('interrupted by the user');
+    const onAbort = () => killGroup('Interrupted by the user.');
     ctx.signal.addEventListener('abort', onAbort, { once: true });
     child.stdout!.on('data', (d: Buffer) => (out += d.toString()));
     child.stderr!.on('data', (d: Buffer) => (out += d.toString()));
-    const timer = setTimeout(() => killGroup(`killed after ${timeoutMs / 1000}s timeout (whole process group)`), timeoutMs);
+    const timer = setTimeout(() => killGroup(`Error: command did not finish within ${timeoutMs / 1000} seconds; the whole process group was killed. Run long jobs with a narrower scope or a larger timeout_seconds.`), timeoutMs);
     const done = (status: string) => {
       clearTimeout(timer);
       ctx.signal.removeEventListener('abort', onAbort);
-      resolve(`${out.trimEnd() || '(no output)'}\n[${status}]`);
+      resolve(`${status}\nWall time: ${((Date.now() - started) / 1000).toFixed(1)} s\nOutput:\n${out.trimEnd() || '(no output)'}`);
     };
-    child.on('error', (e) => done(`failed to start: ${e.message}`));
-    child.on('close', (code, sig) => done(stopped ?? `exit code ${code ?? sig}`));
+    child.on('error', (e) => done(`Failed to start: ${e.message}`));
+    child.on('close', (code, sig) => done(stopped ?? `Exit code: ${code ?? sig}`));
   });
 }
 
@@ -344,7 +306,7 @@ function testGuard(shown: string, before: string | null, after: string, ctx: Too
     .split('\n')
     .map((l) => l.trim())
     .find((l) => ASSERTION.test(l) && !kept.has(l) && !keptSignatures.has(signature(l)));
-  const conflict = 'If an existing test contradicts the request, do not change it: implement what the request says and call report_conflict with the evidence.';
+  const conflict = 'If an existing test contradicts the request, do not change it: implement what the request says and explain the contradiction, with the evidence, in your final report.';
   if (changed) {
     return `Change NOT applied: ${shown} is a test file and this edit changes or removes the existing assertion "${changed}". The request does not ask to change tests, so existing assertions are read-only (you may add new tests). ${conflict}`;
   }
@@ -382,7 +344,7 @@ export const allTools: Tool[] = [
     name: 'read_file',
     readOnly: true,
     description:
-      'Read a UTF-8 text file from the workspace. Returns numbered lines (use the numbers to cite file:line). Large files are paged: use offset/limit, or grep first to find the right line range. You must read a file before editing it.',
+      'Read a text file from the workspace. Returns numbered lines ("   42\\tcode"): cite them as path:42 and copy text from them, without the number prefix, into edit_file. Files over 300 lines start with an outline of their declarations and the first 100 lines; then read the range you need with offset/limit. Read independent files in parallel in the same turn. Do not use it for directories (use glob) or to search (use grep). Example: {"path": "src/app.ts", "offset": 120, "limit": 60}',
     schema: {
       type: 'object',
       properties: {
@@ -415,28 +377,10 @@ export const allTools: Tool[] = [
     },
   },
   {
-    name: 'list_dir',
-    readOnly: true,
-    description: 'List the entries of a directory in the workspace. Directories end with "/".',
-    schema: {
-      type: 'object',
-      properties: { path: { type: 'string', description: 'Directory relative to the workspace root (default ".")' } },
-      required: [],
-    },
-    async run(i, ctx) {
-      const entries = await fs.readdir(await safePath(ctx.root, opt(i, 'path') ?? '.'), { withFileTypes: true });
-      return (
-        entries
-          .sort((a, b) => a.name.localeCompare(b.name))
-          .map((e) => (e.isDirectory() ? `${e.name}/` : e.name))
-          .join('\n') || '(empty directory)'
-      );
-    },
-  },
-  {
     name: 'glob',
     readOnly: true,
-    description: 'Find files by glob pattern (e.g. "src/**/*.ts"). Ignores node_modules, .git and build output.',
+    description:
+      'Find files by name with a glob pattern relative to the workspace root, sorted by path, up to 500 results. Use it when you know part of a file name or the folder layout; use grep when you know text inside the file. Ignores node_modules, .git and build output. Example: {"pattern": "src/**/*.controller.ts"}',
     schema: {
       type: 'object',
       properties: { pattern: { type: 'string', description: 'Glob pattern relative to the workspace root' } },
@@ -458,7 +402,8 @@ export const allTools: Tool[] = [
   {
     name: 'grep',
     readOnly: true,
-    description: 'Search file contents with an extended regular expression. Returns "file:line:text" matches.',
+    description:
+      'Search file contents with an extended regular expression (grep -E) and get "path:line:text" matches. Use it to find where an identifier is declared or used before reading files. Over 30 matches you get one line per file with the count and the first match: narrow with path or include, then read the lines you need. Example: {"pattern": "class \\\\w+Service", "path": "src", "include": "*.ts"}',
     schema: {
       type: 'object',
       properties: {
@@ -500,7 +445,7 @@ export const allTools: Tool[] = [
     name: 'write_file',
     readOnly: false,
     description:
-      'Create a new file, or completely rewrite one you have already read. Creates parent directories. For changes to existing files prefer edit_file. If the new content has errors the type checker can see in that file alone (missing import, undeclared name, broken syntax), the write is reverted and the errors are returned: include every import and declaration the file needs in the same write.',
+      'Create a new file with the full content, creating parent folders. To change an existing file use edit_file; rewrite a whole existing file only when most of it changes, and only after reading it. Write the complete content: placeholders such as "// ... rest of code" would be written literally and are refused. If the content has errors the type checker can see in that file alone (missing import, undeclared name, broken syntax), the write is reverted and the errors are returned. Example: {"path": "src/util/slug.ts", "content": "export const slug = (s: string) => s.toLowerCase();\\n"}',
     schema: {
       type: 'object',
       properties: {
@@ -516,6 +461,8 @@ export const allTools: Tool[] = [
       if (before !== null) await ensureFresh(ctx, file, shown, before, 'call write_file again with the full new content');
       const crlf = before !== null && before.includes('\r\n');
       const content = crlf ? str(i, 'content').replace(/\r?\n/g, '\r\n') : str(i, 'content');
+      const placeholder = before === null ? null : omissionPlaceholder(before, content);
+      if (placeholder) throw new Error(`Change NOT applied: the content contains the placeholder "${placeholder}", which would be written literally and delete code. Write the complete file, or use edit_file for a partial change.`);
       const blocked = testGuard(shown, before, content, ctx);
       if (blocked) throw new Error(blocked);
       const warning = await guardedWrite(ctx, file, shown, before, content);
@@ -527,7 +474,7 @@ export const allTools: Tool[] = [
     name: 'edit_file',
     readOnly: false,
     description:
-      'Replace text in a file you have read. old_string should be copied from read_file output (without the line-number prefix) and identify exactly one place; include a few surrounding lines when needed. Small whitespace/indentation differences are tolerated, and CRLF line endings and tab indentation are preserved automatically. Set replace_all=true to change every occurrence. Returns the edited region with line numbers so you can check it. Precondition checked after every edit: if the edit leaves errors the type checker can see in that file alone, it is reverted and the file stays unchanged. So to rename a name, change its declaration and every use in the file in the same call (replace_all=true on the name), never the declaration alone; to add a call to something new, add its import in the same edit or first.',
+      'Replace one exact piece of text in a file you have read. old_string must be copied verbatim from read_file output (without the line-number prefix) and must match exactly one place: include 2-3 unchanged lines around the change when the text alone is not unique, or set replace_all=true to change every occurrence (renames). new_string is the full replacement, never a placeholder like "// ... existing code". Whitespace, indentation and token spacing differences are tolerated. Returns the edited region with line numbers; you do not need to read the file again to check it. If the edit leaves errors the type checker can see in that file alone, it is reverted: add the import together with its first use, and rename a declaration together with its uses. Example: {"path": "src/cart.js", "old_string": "for (let i = 1; i < items.length; i++) {", "new_string": "for (let i = 0; i < items.length; i++) {"}',
     schema: {
       type: 'object',
       properties: {
@@ -545,7 +492,12 @@ export const allTools: Tool[] = [
       if (before === null) throw new Error(`${shown} does not exist. Create it with write_file.`);
       const neverRead = !ctx.files.has(file);
       if (!neverRead) await ensureFresh(ctx, file, shown, before, 'call edit_file again with old_string copied from it');
-      const result = applyEdit(before, str(i, 'old_string'), str(i, 'new_string'), i.replace_all === true);
+      const placeholder = omissionPlaceholder(str(i, 'old_string'), str(i, 'new_string'));
+      if (placeholder) throw new Error(`Change NOT applied: new_string contains the placeholder "${placeholder}", which would be written literally and delete code. Write the full replacement text.`);
+      const unescaped = unescapeOverEscaped(str(i, 'old_string'), before);
+      const result = unescaped === null
+        ? applyEdit(before, str(i, 'old_string'), str(i, 'new_string'), i.replace_all === true)
+        : applyEdit(before, unescaped, str(i, 'new_string').replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"'), i.replace_all === true);
       if (neverRead && (!result.ok || result.strategy !== 'exact')) {
         throw await showCurrent(ctx, file, before, `old_string does not match ${shown} exactly and you have not read this file yet.`, 'call edit_file again with old_string copied from it');
       }
@@ -555,14 +507,14 @@ export const allTools: Tool[] = [
       const warning = await guardedWrite(ctx, file, shown, before, result.content);
       const how = result.strategy === 'exact' ? '' : ` (matched ${result.strategy})`;
       const count = result.count > 1 ? `${result.count} replacements` : '1 replacement';
-      return `Edited ${shown}: ${count}${how}.${warning}\n${snippet(result.content, result.firstLine, result.lastLine)}\nCheck the snippet for wrong indentation or duplicated lines.`;
+      return `Edited ${shown}: ${count}${how}.${warning}\n${snippet(result.content, result.firstLine, result.lastLine)}\nCheck the snippet for wrong indentation or duplicated lines; no need to read the file again.`;
     },
   },
   {
     name: 'bash',
     readOnly: false,
     description:
-      'Run a shell command in the workspace root (non-interactive, no stdin). Use it to build, test, type-check, run git, or inspect the system. Reading with cat, sed, grep or ls does not change any file, so it is not progress on the task: write the change with edit_file or write_file. Long output is saved to a file under .kronos/ and you get its head, tail and path: grep or page that file instead of running the command again.',
+      'Run a non-interactive bash command in the workspace root (no stdin, no editors or pagers) and get "Exit code", "Wall time" and the combined stdout/stderr. Use it to build, type-check, run tests, run the program and use git. Prefer grep, glob and read_file to explore: reading with cat or sed is not progress. Output over 20,000 characters is saved to a file under .kronos/ and you get its head, tail and path: grep that file instead of running the command again. The default timeout is 120 s (max 600). Example: {"command": "npx tsc --noEmit -p api", "timeout_seconds": 300}',
     schema: {
       type: 'object',
       properties: {
@@ -602,7 +554,7 @@ export const allTools: Tool[] = [
     name: 'update_plan',
     readOnly: true,
     description:
-      'Create or update your task plan. Send the full list every time. Keep exactly one step in_progress while working; mark steps done as soon as they are finished.',
+      'Record your plan for work with 3 or more distinct steps (skip it for simple tasks). Send the full list every time; keep exactly one step in_progress while working and mark a step done as soon as it is finished and verified. Example: {"steps": [{"step": "Find where devices are listed", "status": "done"}, {"step": "Filter the query by operator", "status": "in_progress"}, {"step": "Type-check the api", "status": "pending"}]}',
     schema: {
       type: 'object',
       properties: {
@@ -638,7 +590,7 @@ export const allTools: Tool[] = [
     name: 'delegate',
     readOnly: true,
     description:
-      'Hand a self-contained subtask to a sub-agent with a fresh context and get its report back. role "explorer": read-only research across many files (cheap on your context). role "worker": an independent implementation task. Give complete instructions: the sub-agent knows nothing about this conversation. Several explorer calls in the same turn run in parallel.',
+      'Hand a self-contained subtask to a sub-agent with a fresh context and get only its final report back. role "explorer": read-only research across many files, to keep your own context small. role "worker": an independent implementation task. The sub-agent knows nothing of this conversation: write the objective, the relevant paths and decisions, the boundaries and the report format. Several explorer calls in the same turn run in parallel. For a simple task, work directly instead.',
     schema: {
       type: 'object',
       properties: {
@@ -649,50 +601,6 @@ export const allTools: Tool[] = [
     },
     run(i, ctx) {
       return ctx.delegate(str(i, 'role') as DelegateRole, str(i, 'task'));
-    },
-  },
-  {
-    name: 'semantic_search',
-    readOnly: true,
-    group: 'search',
-    description:
-      'Search the codebase by meaning (RAG: vector embeddings + BM25 over indexed chunks). Use it first when you do not know where something lives; use grep for exact identifiers. Write the query as the question followed by likely English identifiers and domain words that would appear in the code, e.g. "onde o CPF é validado | validate cpf document validator isValidCpf". The index updates itself incrementally.',
-    schema: {
-      type: 'object',
-      properties: {
-        query: { type: 'string', description: 'The question plus likely English identifiers/keywords found in the code' },
-        k: { type: 'integer', description: 'Number of chunks to return (default 8, max 20)' },
-      },
-      required: ['query'],
-    },
-    async run(i, ctx) {
-      const { hits, mode } = await ctx.codeIndex.search(str(i, 'query'), Math.min(20, Math.max(1, num(i, 'k', 8))), ctx.signal);
-      if (!hits.length) return `No results (${mode}).`;
-      const body = hits
-        .map((h) => `── ${h.file}:${h.start}-${h.end} (score ${h.score.toFixed(2)})\n${h.text.split('\n').slice(0, 25).join('\n')}`)
-        .join('\n\n');
-      return `Search mode: ${mode}\n\n${body}`;
-    },
-  },
-  {
-    name: 'run_code',
-    readOnly: false,
-    description:
-      'Execute a short Python or Node.js (ES module) script with the workspace root as working directory, so relative paths and imports like ./src/x.js resolve against the project. Only what the script prints comes back to you. In Node, `await tools.read_file({path, offset, limit})`, `tools.grep({pattern, path, include})`, `tools.glob({pattern})`, `tools.list_dir({path})` and `tools.bash({command})` return the same text as those tools (up to 50 calls per script): chain several reads, searches or checks in one script and print only what you need, instead of one tool call per step.',
-    schema: {
-      type: 'object',
-      properties: {
-        language: { type: 'string', enum: ['python', 'node'] },
-        code: { type: 'string', description: 'Complete script source' },
-        timeout_seconds: { type: 'integer', description: 'Timeout in seconds (default 60, max 600)' },
-      },
-      required: ['language', 'code'],
-    },
-    run(i, ctx) {
-      const quoted = `'${str(i, 'code').replace(/'/g, `'\\''`)}'`;
-      const seconds = Math.min(600, Math.max(1, num(i, 'timeout_seconds', 60)));
-      if (str(i, 'language') === 'python') return runBash(`python3 -c ${quoted}`, ctx, seconds * 1000);
-      return runProcess('node', ['--input-type=module', '-e', RPC_PRELUDE + str(i, 'code')], ctx, seconds * 1000, rpcHandler(ctx));
     },
   },
   {
@@ -709,56 +617,6 @@ export const allTools: Tool[] = [
     },
     run(i, ctx) {
       return Promise.resolve(clip(readSkill(ctx.skills, str(i, 'name'), opt(i, 'file'))));
-    },
-  },
-  {
-    name: 'report_conflict',
-    readOnly: true,
-    description:
-      'Stop and report to the user that the request cannot be done as asked: a test, spec or existing behavior contradicts the request, or it needs changes the request rules out. Use it instead of working around the conflict (never edit tests to make them pass, never special-case inputs or hard-code expected values). Do what the request asks first, then report. Never use it to deliver a normal final answer: when the task is done without a conflict, just answer in text. Your explanation becomes the final answer: say what you did, the exact evidence (file:line, expected vs. requested) and what the user can decide.',
-    schema: {
-      type: 'object',
-      properties: {
-        kind: { type: 'string', enum: ['test_contradicts_request', 'out_of_scope', 'impossible'] },
-        explanation: { type: 'string', description: 'Final answer for the user, in their language' },
-      },
-      required: ['kind', 'explanation'],
-    },
-    async run(i) {
-      return str(i, 'explanation');
-    },
-  },
-  {
-    name: 'remember',
-    readOnly: true,
-    group: 'memory',
-    description:
-      'Save something to long-term memory (vector store, kept outside the workspace) so future sessions can recall it. kind "fact": stable project knowledge (conventions, commands, architecture, user preferences). kind "lesson": a mistake or insight worth not repeating. Never store secrets.',
-    schema: {
-      type: 'object',
-      properties: {
-        text: { type: 'string', description: 'One concise, self-contained statement' },
-        kind: { type: 'string', enum: ['fact', 'lesson'] },
-      },
-      required: ['text', 'kind'],
-    },
-    async run(i, ctx) {
-      await ctx.memory.add(str(i, 'kind') as 'fact' | 'lesson', str(i, 'text'), ctx.signal);
-      return 'Saved to long-term memory.';
-    },
-  },
-  {
-    name: 'recall',
-    readOnly: true,
-    description: 'Search long-term memory (facts, lessons and past task episodes) for anything relevant to a query.',
-    schema: {
-      type: 'object',
-      properties: { query: { type: 'string', description: 'What you want to remember' } },
-      required: ['query'],
-    },
-    async run(i, ctx) {
-      const found = await ctx.memory.recall(str(i, 'query'), 8, ctx.signal);
-      return found.length ? found.map((m) => `[${m.kind} · ${m.at.slice(0, 10)}] ${m.text}`).join('\n') : 'Nothing relevant in memory.';
     },
   },
 ];

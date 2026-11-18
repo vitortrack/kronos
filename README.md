@@ -29,7 +29,7 @@
 
 ---
 
-Raciocínio ReAct (pensar → agir → observar), planejamento, autocorreção, portões determinísticos de verificação e de escopo, orquestração multiagente, RAG sobre o código, memória vetorial de longo prazo e ferramentas externas via MCP.
+Raciocínio ReAct (pensar → agir → observar), planejamento, autocorreção, conclusão com revisão do diff, detector de travamento, orquestração multiagente e ferramentas externas via MCP. O motor segue a documentação pública de agentes da Anthropic e mecanismos medidos de agentes abertos (Codex CLI, Gemini CLI, SWE-agent, OpenHands).
 
 Roda **100% local** com [Ollama](https://ollama.com), com modelos na nuvem pelo [OpenRouter](https://openrouter.ai) (ou qualquer API compatível com OpenAI) ou com **Claude** (API da Anthropic).
 
@@ -62,8 +62,6 @@ O agente roda no laço próprio do Kronos, com o modelo configurado — Ollama o
 
 | Recurso | Precisa de | Sem ele |
 |---|---|---|
-| Busca semântica no código e memória de longo prazo | `ollama pull qwen3-embedding:0.6b` | a busca usa só palavras-chave (BM25) |
-| Ferramenta `run_code` | `node` (scripts com acesso às ferramentas) ou `python3` no PATH | a ferramenta falha só para a linguagem que faltar |
 | Reverter edições que deixam erro de tipo | TypeScript instalado no projeto aberto | a checagem não roda e a edição é aplicada |
 
 ## Instalação
@@ -77,7 +75,6 @@ npm link            # deixa o comando `kronos` disponível no sistema
 Provedor local (padrão quando não há chave da Anthropic):
 
 ```bash
-ollama pull qwen3-embedding:0.6b  # embeddings para RAG e memória vetorial (melhor no benchmark)
 # modelo de chat padrão: glm-5.3-flash:cloud (troque com -m, ex.: -m qwen3:8b)
 ```
 
@@ -141,10 +138,9 @@ Abra o terminal do VS Code com ``Ctrl+` `` (no Windows conectado ao WSL, ele já
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh   # instala o Ollama
 ollama signin                                    # entra na conta: o modelo padrão (glm-5.3-flash:cloud) roda na nuvem do Ollama
-ollama pull qwen3-embedding:0.6b                 # modelo da busca semântica no código (opcional, recomendado)
 ```
 
-![Terminal do VS Code instalando o Ollama, entrando na conta e baixando o modelo de embedding](vscode/media/guide/05-ollama.png)
+![Terminal do VS Code instalando o Ollama e entrando na conta](vscode/media/guide/05-ollama.png)
 
 Guia oficial: [Ollama no Linux](https://docs.ollama.com/linux). Para rodar um modelo na sua máquina, sem conta, use `ollama pull qwen3:8b` (ou outro) e escolha-o no passo 7.
 
@@ -210,7 +206,6 @@ kronos -p anthropic --effort xhigh "investigue o vazamento de memória"
 | `--budget <tokens>` | para quando o consumo total passar do limite |
 | `--effort <nível>` | esforço de raciocínio do Claude (`low` … `max`) |
 | `--num-ctx <n>` | janela de contexto do Ollama (padrão 65536) |
-| `--embed-model <nome>` | modelo de embedding (padrão `qwen3-embedding:0.6b`) |
 | `--lang <idioma>` | idioma de tudo o que o agente escreve: `pt-BR` (padrão), `en`, `es`, `fr`, `de`, `it` ou `auto` (o da pergunta) |
 | `--thinking` | mostra o raciocínio do modelo (por padrão aparece só "✻ pensando…") |
 | `--no-log` | não grava o trace da sessão em `~/.kronos/sessions` |
@@ -238,8 +233,6 @@ No modo interativo do CLI, digite o comando no lugar da tarefa. Na extensão, di
 | `/traduzir [idioma]` | CLI | Traduz a última resposta |
 | `/thinking on\|off` | CLI | Mostra ou esconde o raciocínio do modelo |
 | `/orchestrate <tarefa>` | CLI | Roda a tarefa no pipeline multiagente |
-| `/index` | CLI | Indexa (ou atualiza) o código para o RAG |
-| `/memory` | CLI | Lista a memória de longo prazo do projeto |
 | `/sessions`, `/resume <id>`, `/fork` | CLI | Lista, retoma ou copia conversas salvas |
 | `/help`, `/exit` | CLI | Ajuda e saída |
 
@@ -272,10 +265,9 @@ A saída é Markdown renderizado no terminal (títulos, listas, negrito, blocos 
              │     │  ▲                         │        │
              │     │  └── observações / erros ◀─┘        │
              │     ├─ delegate ─▶ Agent (explorer|worker)│
-             │     ├─ portões: verificação · escopo      │
+             │     ├─ conclusão: finish · portão · verif.│
              │     └─ review (--review) ─▶ Agent (critic)│
              │  Orchestrator: planner → workers → critic │
-             │  Memory (vetorial) · CodeIndex (RAG)      │
              │  Provider: Ollama | Anthropic | OpenAI    │
              │  Trace JSONL · tokens · custo · travas    │
              └───────────────────────────────────────────┘
@@ -284,16 +276,14 @@ A saída é Markdown renderizado no terminal (títulos, listas, negrito, blocos 
 | Componente | Como está implementado | Onde |
 |---|---|---|
 | **1. Núcleo cognitivo** | Persona de engenheiro sênior, método de resolução (evidência → causa raiz → decisão → verificação → reflexão → aprendizado), guardrails (escopo, segredos, ações destrutivas) e um prompt por papel (main, worker, explorer, planner, critic). Instruções do projeto em `KRONOS.md`, `AGENTS.md` ou `CLAUDE.md` são carregadas automaticamente. | `src/prompts.ts` |
-| **2. Memória** | **Curto prazo:** histórico da sessão, com compactação automática (resumo com o pedido original fixo) quando a janela do modelo enche; saídas antigas de ferramenta são mascaradas em blocos de 10, saídas idênticas ficam só na cópia mais nova e argumentos grandes de chamadas antigas (o conteúdo de um `write_file`, por exemplo) são encurtados. **Longo prazo:** banco vetorial em `~/.kronos/projects/<projeto>/memory.jsonl` com *fatos*, *lições* e *episódios*; as lembranças relevantes são recuperadas no início de cada tarefa, os episódios são gravados automaticamente ao concluir e o agente consulta a memória com `recall`. | `src/memory.ts`, `src/providers/ollama.ts` |
-| **3. Planejamento** | Laço ReAct; planner dedicado no modo `--orchestrate`; autocorreção (o erro volta como observação estruturada, e após 3 falhas seguidas o agente é instruído a mudar de estratégia); antes de concluir, **portão de verificação** (se mexeu em código e não rodou nada depois da última edição, pede uma vez para rodar testes/build) e **checagem de escopo** (áreas do diff que o pedido não menciona); revisor independente opcional (`--review`). | `src/agent.ts`, `src/orchestrator.ts` |
-| **4. Ferramentas** | Com Ollama: `bash`, `read_file`, `write_file`, `edit_file`, `list_dir`, `glob`, `grep`, `run_code`, `update_plan`, `semantic_search` (RAG), `delegate`, `recall`, `status`, `skill` (só quando há skills) e `report_conflict` (encerra a tarefa relatando que um teste ou o código contradiz o pedido, em vez de contornar; só aceito depois de editar e rodar algo). `web_fetch` e `remember` entram com `load_tools` ou com uma skill que os cite. Um script Node no `run_code` chama `tools.read_file`, `tools.grep`, `tools.glob`, `tools.list_dir` e `tools.bash` (até 50 por script, com as mesmas permissões) e só o que ele imprime volta ao modelo: várias leituras e buscas viram um passo só. Com Claude, o agente principal fica só com `bash` no lugar de `list_dir`, `glob`, `grep`, `run_code`, `update_plan` e `remember` (na avaliação, as ferramentas dedicadas custavam ~40% mais passos e tokens sem ganho de acerto). Saída maior que 20 mil caracteres vai para `.kronos/outputs/` e o modelo recebe o início (40%), o fim (60%) e o caminho. Entradas validadas contra o schema; caminhos presos ao workspace (inclusive via symlink); permissões por modo; detecção de comandos destrutivos; leitura de `.env` e do ambiente de containers sempre pede confirmação. | `src/tools.ts`, `src/validate.ts` |
-| **5. Observabilidade** | Trace de cada passo (texto do modelo, chamadas, resultados, tokens e custo) em `~/.kronos/sessions/*.jsonl`; contagem de tokens e custo estimado ao fim de cada tarefa; travas contra loop (limite de passos, chamada idêntica repetida, orçamento de tokens) e Ctrl+C para interromper. | `src/session.ts`, `src/agent.ts` |
+| **2. Memória** | Histórico da sessão com compactação automática quando a janela do modelo enche: um resumo em cinco seções (visão da tarefa, estado atual, descobertas, próximos passos, contexto a preservar) com o pedido original fixo e os arquivos lidos por último. Saídas antigas de ferramenta são mascaradas em blocos de 10, saídas idênticas ficam só na cópia mais nova e argumentos grandes de chamadas antigas são encurtados. Com Claude, a compactação roda no servidor da Anthropic. Entre execuções, a continuidade vem da nota de passagem (`--handoff`). | `src/providers/ollama.ts`, `src/providers/anthropic.ts` |
+| **3. Planejamento** | Laço ReAct; planner dedicado no modo `--orchestrate`; autocorreção (o erro volta como observação estruturada). **Conclusão:** a ferramenta `finish` mostra o diff e um checklist na primeira chamada e encerra na segunda; antes de encerrar rodam o portão de checagens (`--gate`), o pedido de verificação (se mexeu em código e não rodou nada depois) e o revisor opcional (`--review`), com no máximo 8 bloqueios. Resposta só em texto também encerra (perguntas). **Ritmo:** "Please continue." quando o modelo anuncia a próxima ação e para; nova tentativa em resposta vazia; aviso para concluir quando a última edição já foi verificada e nada mudou há 6 passos. | `src/agent.ts`, `src/orchestrator.ts` |
+| **4. Ferramentas** | `bash`, `read_file`, `write_file`, `edit_file`, `glob`, `grep`, `update_plan`, `delegate`, `finish` e `skill` (só quando há skills); `web_fetch` e as ferramentas MCP entram com `load_tools` ou com uma skill que as cite. Cada descrição diz o que a ferramenta faz, quando usar e quando não usar, os limites e um exemplo. Nome de ferramenta errado recebe as mais parecidas ("Did you mean"). O `bash` devolve `Exit code`, `Wall time` e a saída. Saída maior que 20 mil caracteres vai para `.kronos/outputs/` e o modelo recebe o início (40%), o fim (60%) e o caminho. Entradas validadas contra o schema; caminhos presos ao workspace (inclusive via symlink); permissões por modo; detecção de comandos destrutivos; leitura de `.env` e do ambiente de containers sempre pede confirmação. | `src/tools.ts`, `src/validate.ts` |
+| **5. Observabilidade** | Trace de cada passo (texto do modelo, chamadas, resultados, tokens e custo) em `~/.kronos/sessions/*.jsonl`; contagem de tokens e custo estimado ao fim de cada tarefa; estado final de cada execução (sucesso, limite de passos, orçamento, laço, recusa, interrupção); travas contra loop (limite de passos, orçamento de tokens e detector de travamento: a mesma chamada com o mesmo resultado 4 vezes, o mesmo erro 3 vezes ou um ciclo A/B gera um aviso e, se repetir, encerra) e Ctrl+C para interromper. | `src/session.ts`, `src/agent.ts` |
 
 **Multiagente.** O agente principal age como gerente: delega pesquisa ampla a *explorers* (somente leitura, rodam em paralelo) e subtarefas independentes a *workers*, e cada sub-agente começa com contexto limpo. No `--orchestrate`, o fluxo é contrato → fatias com portão → revisão (veja a tabela de opções).
 
 **Motor de decisão.** Contratos, checagens de pronto, o critério de diff mínimo e o RHI (`src/rhi.ts`: `refine`, `compare` e `digest` do texto de harness) usam um juiz do próprio Kronos, com o mesmo modelo do agente, que devolve JSON validado contra um schema.
-
-**RAG.** `semantic_search` indexa o código em trechos de 60 linhas (com sobreposição) e ranqueia combinando similaridade de embeddings (peso 0,8) e BM25 (0,2). O agente escreve a busca como pergunta + identificadores prováveis em inglês, o que funciona como expansão de query. O índice é incremental e fica em `~/.kronos/projects/`, fora do repositório. Sem modelo de embedding, cai para BM25 puro.
 
 **Robustez com modelos locais.** Modelos menores às vezes escrevem a chamada de ferramenta como texto (`<tool_call>…`, bloco JSON). O provedor do Ollama reconhece esses formatos e executa a chamada mesmo assim. Números enviados como string são convertidos automaticamente.
 
@@ -317,7 +307,6 @@ Nada é delegado ao Claude Code: o Kronos não chama o Claude Code nem precisa q
 | Plugins | `~/.kronos/plugins/` | — | `~/.claude/plugins/` (instalados pelo `/plugin` do Claude Code) |
 | Servidores MCP | `.kronos/mcp.json`, `~/.kronos/mcp.json`, `.mcp.json` dos plugins do Kronos | `.mcp.json` | `~/.claude.json` (do projeto e do usuário), `.mcp.json` dos plugins do Claude Code |
 | Liga, desliga e aprovação de MCP | `~/.kronos/mcp-state.json` | — | `enabledMcpjsonServers`, `disabledMcpjsonServers`, `enableAllProjectMcpServers` |
-| Memória de longo prazo | `~/.kronos/projects/<projeto>/memory.jsonl` | — | — |
 | Conversas salvas | `~/.kronos/projects/<projeto>/sessions/` | — | — |
 | Trace de cada sessão | `~/.kronos/sessions/` | — | — |
 | Preferências da extensão | configurações `kronos.*` do VS Code | — | — |
@@ -466,7 +455,7 @@ Ligar e desligar ficam gravados em `~/.kronos/mcp-state.json`, por projeto, e re
 | `KRONOS_CLAUDE_CONFIG=off` | desliga a reserva do Claude Code: `~/.claude/CLAUDE.md`, `~/.claude/skills`, plugins, `~/.claude.json` e as aprovações de MCP do Claude Code |
 | `KRONOS_MCP=off` | desliga o MCP inteiro |
 | `KRONOS_USER_SKILLS=off` | só as skills do projeto: desliga as de usuário, as de plugins e a criação automática |
-| `KRONOS_MODEL`, `KRONOS_LANG`, `KRONOS_EMBED_MODEL`, `KRONOS_REVIEW_MODEL` | padrões de `--model`, `--lang`, `--embed-model` e `--review-model` |
+| `KRONOS_MODEL`, `KRONOS_LANG`, `KRONOS_REVIEW_MODEL` | padrões de `--model`, `--lang` e `--review-model` |
 | `OLLAMA_HOST`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_BASE_URL` | acesso aos provedores |
 
 ### Equivalências com o Claude Code
@@ -486,15 +475,16 @@ Ligar e desligar ficam gravados em `~/.kronos/mcp-state.json`, por projeto, e re
 ## Edição de arquivos
 
 - **Aviso de loop:** na 5ª edição do mesmo arquivo (e a cada 3 depois) o agente é avisado para reler o erro e mudar de abordagem.
-- **Testes protegidos:** se o pedido não fala em mexer em testes, alterar ou remover uma asserção existente, ou acrescentar `skip`/`process.exit`, é recusado e o agente é orientado a usar `report_conflict`. Renomear símbolos e acrescentar testes novos continua livre.
+- **Testes protegidos:** se o pedido não fala em mexer em testes, alterar ou remover uma asserção existente, ou acrescentar `skip`/`process.exit`, é recusado e o agente é orientado a explicar a contradição, com a evidência, no relatório final. Renomear símbolos e acrescentar testes novos continua livre.
 - **Numeração:** criar `NNN_algo.sql` (ou `NNN-…`) numa pasta onde esse número já existe gera aviso com o próximo número livre.
 - **Leia antes de editar:** `edit_file`/`write_file` recusam arquivo não lido ou alterado desde a leitura (por comando, usuário ou outro agente).
-- **Casamento tolerante em cascata** (como aider/Codex): exato → ignorando espaços no fim → ignorando indentação (reindenta a substituição, inclusive tab ↔ espaços) → pontuação unicode. Arquivos CRLF são editados de forma transparente.
+- **Casamento tolerante em cascata** (como aider/Codex/Gemini CLI): exato → ignorando espaços no fim → ignorando indentação (reindenta a substituição, inclusive tab ↔ espaços) → pontuação unicode → espaço entre tokens. Arquivos CRLF são editados de forma transparente.
+- **Sem atalhos de omissão:** `// ... rest of code` e parecidos no texto novo são recusados (seriam gravados literalmente). `\n` e `\"` escapados a mais no trecho antigo são corrigidos quando o trecho só existe sem o escape.
 - **Erro que ensina:** trecho ambíguo lista as linhas de cada ocorrência; trecho não encontrado mostra as linhas mais parecidas ("Did you mean…").
 - **Trava de sintaxe** (como SWE-agent): edição que quebraria JS/TS/TSX/JSON/Python válido é recusada, com a linha do erro.
 - **Retorno com evidência:** cada edição devolve o trecho editado numerado para conferência.
 - **Trava de tipos:** em `.ts`/`.tsx`, edição que cria erro que o TypeScript do próprio projeto enxerga no arquivo (import faltando, nome não declarado) é revertida, com os erros na resposta.
-- **Regras de subpasta:** ler ou editar um arquivo traz o `CLAUDE.md`/`AGENTS.md` das pastas dele, inclusive quando a leitura é feita por `tools.read_file` dentro do `run_code`.
+- **Regras de subpasta:** ler ou editar um arquivo traz o `CLAUDE.md`/`AGENTS.md` das pastas dele.
 - Arquivos grandes são paginados; acima de 300 linhas, a primeira leitura traz um sumário das declarações. O timeout do `bash` mata o grupo de processos inteiro.
 
 ## Avaliação
@@ -503,7 +493,6 @@ Ligar e desligar ficam gravados em `~/.kronos/mcp-state.json`, por projeto, e re
 npm run eval:sanity                                  # valida a bateria (cada checagem falha sem correção e passa com a referência)
 npm run eval -- --suite hard --runs 3 --label teste  # roda os cenários e mede
 npm run eval -- --model qwen3:8b                     # compara outro modelo
-npm run eval:retrieval                               # benchmark do RAG sobre ../detrorjweb
 ```
 
 17 cenários com testes escondidos (bugs, feature, refatoração, diff, CRLF/tabs, blocos duplicados, Python, escopo, perguntas). A suíte `skills` mede se o agente segue uma skill do projeto; a suíte `long` (fora de `all`) tem tarefas de várias partes com checagens escondidas, onde o modelo ainda erra; a suíte `impossible` (também fora de `all`) traz um teste visível que contradiz o pedido e mede se o agente trapaceia ou relata o conflito. Mede acerto, passos, tokens, tempo, falhas de ferramenta e inglês na prosa; resultados em `eval/results/`.
@@ -513,7 +502,7 @@ npm run eval:retrieval                               # benchmark do RAG sobre ..
 ```bash
 npm run dev -- "tarefa"   # roda direto do TypeScript
 npm run check             # checagem de tipos
-npm test                  # testes (laço ReAct, revisão, permissões, travas, RAG…)
+npm test                  # testes (laço ReAct, conclusão, revisão, permissões, travas…)
 npm run build
 ```
 
@@ -531,9 +520,7 @@ src/
   rhi.ts            reescrita e comparação de harness
   attempts.ts       melhor de N (--attempts)
   skills.ts         descoberta e leitura de skills
-  skill-review.ts   revisão automática de skills
-  rag.ts            embeddings, BM25, índice do código
-  memory.ts         memória vetorial de longo prazo
+  loop-guard.ts     detector de travamento e sugestão de nome de ferramenta
   providers/        ollama.ts · anthropic.ts · openai.ts
   ui.ts             saída do terminal
 ```

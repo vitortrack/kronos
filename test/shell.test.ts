@@ -49,8 +49,6 @@ function ctx(answers: Decision[]): ToolContext & { asked: string[] } {
     root: '/tmp',
     mode: 'ask',
     signal: new AbortController().signal,
-    codeIndex: undefined as never,
-    memory: undefined as never,
     skills: [],
     files: new Map(),
     allowed: new Set(),
@@ -143,22 +141,6 @@ test('workspaceDiff gives the reviewer tracked edits and new files in one block'
   const diff = (await workspaceDiff(root))!;
   assert.match(diff, /-old\n\+new/);
   assert.match(diff, /--- new file: b\.js\ncreated/);
-});
-
-test('concurrent index updates share one build (background warm-up + first search)', async () => {
-  const { CodeIndex, Embedder } = await import('../src/rag.js');
-  const fs = await import('node:fs');
-  const os = await import('node:os');
-  const path = await import('node:path');
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'kronos-warm-'));
-  fs.writeFileSync(path.join(root, 'a.js'), 'export const a = 1;\n');
-  process.env.KRONOS_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'kronos-warm-home-'));
-  const index = new CodeIndex(root, new Embedder('none', 'http://127.0.0.1:9'));
-  const signal = new AbortController().signal;
-  const first = index.update(signal);
-  assert.equal(index.update(signal), first);
-  assert.equal((await first).files, 1);
-  assert.notEqual(index.update(signal), first);
 });
 
 test('secrets: reading .env or container env always asks, even in auto mode and for read-only tools', async () => {

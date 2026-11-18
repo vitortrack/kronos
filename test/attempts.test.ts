@@ -50,7 +50,7 @@ test('bestOf runs isolated attempts, applies only the smallest passing one and c
   ];
   const cfg: Config = {
     provider: 'ollama', model: 'mock', mode: 'auto', root, maxSteps: 10, review: false, effort: 'high',
-    numCtx: 8192, embedModel: 'none', tokenBudget: 0, lang: 'pt-BR', logDir: null,
+    numCtx: 8192, tokenBudget: 0, lang: 'pt-BR', logDir: null,
   };
   const ui = UI.create();
   const result = await bestOf(cfg, ui, 'crie a feature', 2, () => scripted(plans.shift() ?? []));

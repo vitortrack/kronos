@@ -60,8 +60,6 @@ function context(root: string): ToolContext {
     root,
     mode: 'auto',
     signal: new AbortController().signal,
-    codeIndex: undefined as never,
-    memory: undefined as never,
     skills: [],
     files: new Map(),
     allowed: new Set(),
@@ -120,44 +118,6 @@ test('bash timeout kills the whole process group, not just the shell', async () 
   assert.equal(fs.existsSync(marker), false);
 });
 
-test('run_code runs in the workspace root so relative imports work, with quotes intact', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'kronos-run-'));
-  fs.writeFileSync(path.join(root, 'package.json'), '{"type":"module"}');
-  fs.writeFileSync(path.join(root, 'a.js'), "export const who = 'mundo';\n");
-  const ctx = context(root);
-  assert.match(await tool('run_code').run({ language: 'node', code: "import { who } from './a.js'; console.log(`olá ${who}`, \"it's\");" }, ctx), /olá mundo it's/);
-  assert.match(await tool('run_code').run({ language: 'python', code: "import os; print(os.path.exists('a.js'), \"it's\")" }, ctx), /True it's/);
-});
-
-test('run_code in node calls the read-only tools and bash by RPC; only what it prints comes back', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'kronos-rpc-'));
-  fs.writeFileSync(path.join(root, 'a.ts'), 'export const alpha = 1;\n');
-  fs.writeFileSync(path.join(root, 'b.ts'), 'export const beta = 2;\n');
-  const ctx = context(root);
-  const code = [
-    "const files = (await tools.glob({ pattern: '*.ts' })).split('\\n');",
-    "const hits = await tools.grep({ pattern: 'beta' });",
-    "const first = await tools.read_file({ path: files[0] });",
-    "const echo = await tools.bash({ command: 'echo from-bash' });",
-    "console.log(files.length, hits.trim(), first.includes('alpha'), echo.split('\\n')[0]);",
-    "try { await tools.write_file({ path: 'c.ts', content: 'x' }); } catch (e) { console.log('refused:', e.message); }",
-    "try { await tools.read_file({ path: 'missing.ts' }); } catch (e) { console.log('failed:', /ENOENT/.test(e.message)); }",
-  ].join('\n');
-  const out = await tool('run_code').run({ language: 'node', code }, ctx);
-  assert.match(out, /^2 \.\/b\.ts:1:export const beta = 2; true from-bash\n/);
-  assert.match(out, /refused: tools\.write_file is not available in run_code\. Available: read_file, grep, glob, list_dir, bash\./);
-  assert.match(out, /failed: true\n\[exit code 0\]$/);
-  assert.equal(fs.existsSync(path.join(root, 'c.ts')), false);
-
-  const readOnly = { ...context(root), mode: 'read-only' as const };
-  const denied = await tool('run_code').run({ language: 'node', code: "try { await tools.bash({ command: 'touch x' }); } catch (e) { console.log(e.message); }" }, readOnly);
-  assert.match(denied, /Permission denied: "bash" is not allowed in read-only mode/);
-  assert.equal(fs.existsSync(path.join(root, 'x')), false);
-
-  const capped = await tool('run_code').run({ language: 'node', code: "let n = 0; try { for (;;) { await tools.list_dir({}); n++; } } catch (e) { console.log(n, e.message); }" }, ctx);
-  assert.match(capped, /^50 Limit of 50 tool calls per script reached\./);
-});
-
 test('creating a numbered file whose number is taken warns with the next free number', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'kronos-num-'));
   fs.mkdirSync(path.join(root, 'db/init'), { recursive: true });
@@ -182,7 +142,7 @@ test('test guard: existing assertions are read-only unless the request asks to c
   fs.writeFileSync(path.join(root, 'test.mjs'), test);
   const ctx = { ...context(root), testEditsAllowed: false };
   await tool('read_file').run({ path: 'test.mjs' }, ctx);
-  await assert.rejects(tool('edit_file').run({ path: 'test.mjs', old_string: '85);', new_string: '90);' }, ctx), /changes or removes the existing assertion "assert\.equal\(discount\(100, 10\), 85\);"[\s\S]*report_conflict/);
+  await assert.rejects(tool('edit_file').run({ path: 'test.mjs', old_string: '85);', new_string: '90);' }, ctx), /changes or removes the existing assertion "assert\.equal\(discount\(100, 10\), 85\);"[\s\S]*final report/);
   await assert.rejects(tool('write_file').run({ path: 'test.mjs', content: "import assert from 'node:assert/strict';\nassert.equal(calcTotal([1, 2]), 3);\n" }, ctx), /changes or removes/);
   await assert.rejects(tool('edit_file').run({ path: 'test.mjs', old_string: "'node:assert/strict';\n", new_string: "'node:assert/strict';\nprocess.exit(0);\n" }, ctx), /would skip or short-circuit/);
   assert.match(await tool('edit_file').run({ path: 'test.mjs', old_string: 'calcTotal([1, 2])', new_string: 'computeTotal([1, 2])' }, ctx), /Edited test\.mjs/);

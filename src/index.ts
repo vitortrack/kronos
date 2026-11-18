@@ -3,14 +3,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { bestOf } from './attempts.js';
-import { readMemories } from './memory.js';
 import { orchestrate } from './orchestrator.js';
 import { gateFor } from './gate.js';
 import { agentJudge } from './judge.js';
 import { INIT_TASK, LANGUAGE_NAMES, languageName } from './prompts.js';
 import { closeMcp, mcpCommand } from './mcp.js';
 import type { Effort } from './providers/anthropic.js';
-import { DEFAULT_EMBED_MODEL, DEFAULT_MODEL, Session, type Config } from './session.js';
+import { DEFAULT_MODEL, Session, type Config } from './session.js';
 import type { Mode } from './tools.js';
 import { UI } from './ui.js';
 
@@ -37,7 +36,6 @@ Opções:
       --budget <tokens>              para quando o total de tokens passar disso (padrão: sem limite)
       --effort <low|medium|high|xhigh|max>  esforço de raciocínio do Claude (padrão: high)
       --num-ctx <n>                  janela de contexto do Ollama (padrão: 65536)
-      --embed-model <nome>           modelo de embedding do Ollama (padrão: ${DEFAULT_EMBED_MODEL})
       --lang <idioma>                idioma das respostas e interações: pt-BR, en, es, fr, de, it, auto (padrão: pt-BR)
       --thinking                     mostra o raciocínio do modelo (padrão: escondido)
       --no-log                       não grava o trace em ~/.kronos/sessions
@@ -46,7 +44,7 @@ Opções:
       --fork                         com -c ou -r: continua numa cópia, sem alterar a original
   -h, --help
 
-Variáveis: OLLAMA_HOST, ANTHROPIC_API_KEY, OPENROUTER_API_KEY, OPENAI_BASE_URL, KRONOS_MODEL, KRONOS_SANDBOX, KRONOS_EMBED_MODEL, KRONOS_LANG, KRONOS_HOME, KRONOS_MCP, KRONOS_CLAUDE_CONFIG, KRONOS_USER_SKILLS`;
+Variáveis: OLLAMA_HOST, ANTHROPIC_API_KEY, OPENROUTER_API_KEY, OPENAI_BASE_URL, KRONOS_MODEL, KRONOS_SANDBOX, KRONOS_LANG, KRONOS_HOME, KRONOS_MCP, KRONOS_CLAUDE_CONFIG, KRONOS_USER_SKILLS`;
 
 const COMMANDS = `Comandos:
   /plan                    mostra o plano atual
@@ -56,8 +54,6 @@ const COMMANDS = `Comandos:
   /traduzir [idioma]       traduz a última resposta (padrão: o idioma atual)
   /thinking <on|off>       mostra ou esconde o raciocínio do modelo
   /orchestrate <tarefa>    roda a tarefa no pipeline multiagente
-  /index                   indexa (ou atualiza) o código para o RAG
-  /memory                  lista a memória de longo prazo do projeto
   /usage                   tokens, custo e contexto da conversa; no openai, gasto e saldo do OpenRouter
   /compact [foco]          resume o histórico agora para gastar menos tokens nos próximos passos
   /mcp [ligar|desligar <servidor> | importar]
@@ -121,7 +117,6 @@ function parseConfig(): { cfg: Config; task: string; orchestrateTask: boolean; g
         budget: { type: 'string' },
         effort: { type: 'string' },
         'num-ctx': { type: 'string' },
-        'embed-model': { type: 'string' },
         'no-log': { type: 'boolean' },
         lang: { type: 'string' },
         thinking: { type: 'boolean' },
@@ -154,7 +149,6 @@ function parseConfig(): { cfg: Config; task: string; orchestrateTask: boolean; g
       review: (Boolean(values.review) || Boolean(values['review-model'] ?? process.env.KRONOS_REVIEW_MODEL)) && !values['no-review'],
       effort: oneOf<Effort>(values.effort, ['low', 'medium', 'high', 'xhigh', 'max'], '--effort', 'high'),
       numCtx: positiveInt(values['num-ctx'], '--num-ctx', 65536),
-      embedModel: values['embed-model'] ?? process.env.KRONOS_EMBED_MODEL ?? DEFAULT_EMBED_MODEL,
       tokenBudget: positiveInt(values.budget, '--budget', 0),
       interactive: positionals.length === 0,
       lang: validLang(values.lang ?? process.env.KRONOS_LANG ?? 'pt-BR', '--lang'),
@@ -313,24 +307,6 @@ async function main(): Promise<void> {
         if (!arg) ui.warn('use /orchestrate <tarefa>');
         else await execute(arg, true);
         break;
-      case '/index': {
-        ui.info('indexando o código...');
-        try {
-          const stats = await session.track(() => session.codeIndex.update(session.signal));
-          ui.info(
-            `${stats.files} arquivos · ${stats.chunks} trechos · ${stats.changed} atualizados · ${stats.embedded ? `embeddings ${cfg.embedModel}` : `só BM25 (rode "ollama pull ${cfg.embedModel}" para busca vetorial)`}`,
-          );
-        } catch (e) {
-          ui.error(e instanceof Error ? e.message : String(e));
-        }
-        break;
-      }
-      case '/memory': {
-        const memories = readMemories(cfg.root);
-        if (!memories.length) ui.info('a memória de longo prazo deste projeto está vazia');
-        for (const m of memories.slice(-30)) ui.final(`[${m.kind} · ${m.at.slice(0, 10)}] ${m.text}`);
-        break;
-      }
       case '/usage':
         ui.usage(session.usage, session.costUsd());
         ui.usageBars(await session.usageReport());

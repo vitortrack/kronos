@@ -16,8 +16,7 @@
     "test": "KRONOS_MCP=off KRONOS_CLAUDE_CONFIG=off node --import tsx --test test/*.test.ts",
     "prepare": "npm run build",
     "eval": "tsx eval/run.ts",
-    "eval:sanity": "tsx eval/sanity.ts",
-    "eval:retrieval": "tsx eval/retrieval.ts"
+    "eval:sanity": "tsx eval/sanity.ts"
   },
   "engines": {
     "node": ">=22"

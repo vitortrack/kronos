@@ -4,7 +4,7 @@ import { parseArgs } from 'node:util';
 import path from 'node:path';
 import type { Judge } from './contract.js';
 import { agentJudge } from './judge.js';
-import { DEFAULT_EMBED_MODEL, DEFAULT_MODEL, Session } from './session.js';
+import { DEFAULT_MODEL, Session } from './session.js';
 import { UI } from './ui.js';
 
 export interface Verdict {
@@ -114,7 +114,7 @@ async function main(): Promise<void> {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'kronos-rhi-'));
   const ui = UI.create();
   const session = new Session(
-    { provider, model: process.env.KRONOS_MODEL ?? DEFAULT_MODEL[provider], mode: 'read-only', root, maxSteps: 40, review: false, effort: 'high', numCtx: 65536, embedModel: DEFAULT_EMBED_MODEL, tokenBudget: 0, lang: 'en', logDir: null },
+    { provider, model: process.env.KRONOS_MODEL ?? DEFAULT_MODEL[provider], mode: 'read-only', root, maxSteps: 40, review: false, effort: 'high', numCtx: 65536, tokenBudget: 0, lang: 'en', logDir: null },
     ui,
   );
   const judge = agentJudge(session);

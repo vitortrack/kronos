@@ -9,7 +9,7 @@ Chat com o agente de código autônomo Kronos na barra lateral (ícone do relóg
 - Anexe prints e arquivos com 📎, Ctrl+V ou arrastando.
 - Marque **multiagente** para dividir a tarefa em fatias com checagens de pronto e uma revisão final.
 
-Configurações em *Settings → Kronos*: provedor (Ollama local ou Claude), modelo, permissões, idioma, revisão e modelo de embedding.
+Configurações em *Settings → Kronos*: provedor (Ollama local ou Claude), modelo, permissões, idioma e revisão.
 
 ## Como começar
 
@@ -26,7 +26,6 @@ Configurações em *Settings → Kronos*: provedor (Ollama local ou Claude), mod
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
 ollama signin                       # modelo padrão glm-5.3-flash:cloud, na nuvem do Ollama
-ollama pull qwen3-embedding:0.6b    # busca semântica no código (opcional)
 ```
 
 ![Terminal instalando o Ollama e os modelos](media/guide/05-ollama.png)

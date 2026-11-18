@@ -7,12 +7,10 @@ import { test } from 'node:test';
 import { stripVTControlCharacters } from 'node:util';
 import { renderMarkdownLine } from '../src/markdown.js';
 import { closeMcp } from '../src/mcp.js';
-import { memoryFile } from '../src/memory.js';
 import type { Judge } from '../src/contract.js';
 import { orchestrate } from '../src/orchestrator.js';
 import { systemPrompt } from '../src/prompts.js';
 import { parseInlineToolCalls } from '../src/providers/ollama.js';
-import { bm25, chunkFile, cosine, tokenize } from '../src/rag.js';
 import { Session, type Config } from '../src/session.js';
 import { allTools, cleanPath, isDangerous, safePath, suggestPath } from '../src/tools.js';
 import type { Provider, StepRequest, StepResult, ToolResult } from '../src/types.js';
@@ -70,7 +68,6 @@ function config(root: string, overrides: Partial<Config> = {}): Config {
     review: false,
     effort: 'high',
     numCtx: 8192,
-    embedModel: 'no-such-embed-model',
     tokenBudget: 0,
     lang: 'pt-BR',
     logDir: null,
@@ -125,41 +122,9 @@ test('reflection: a reviewer rejection sends the agent back to work, then approv
   assert.equal(out, 'fixed');
   assert.equal(reviews, 2);
   assert.equal(fs.readFileSync(path.join(root, 'a.txt'), 'utf8'), 'v2');
-  assert.equal(fs.existsSync(memoryFile(root)), false, 'an unverified outcome must not become a memory');
 });
 
-test('memory: the episode is stored only when something ran after the last edit', async () => {
-  const root = workspace();
-  const ui = UI.create();
-  try {
-    const provider = new ScriptedProvider([
-      () => call('write_file', { path: 'a.txt', content: 'v1' }),
-      () => call('bash', { command: 'cat a.txt' }),
-      () => call('bash', { command: 'touch b.txt' }),
-      () => answer('done'),
-    ]);
-    await new Session(config(root), ui, () => provider).run('write v1 to a.txt');
-    assert.match(fs.readFileSync(memoryFile(root), 'utf8'), /"kind":"episode"/);
-  } finally {
-    ui.close();
-  }
-});
-
-test('KRONOS_SKIP_END switches off one end-of-task step for ablation runs', async () => {
-  const root = workspace();
-  const ui = UI.create();
-  process.env.KRONOS_SKIP_END = 'verify,requirements';
-  try {
-    const provider = new ScriptedProvider([() => call('write_file', { path: 'a.ts', content: 'export const a = 1;\n' }), () => answer('done')]);
-    const out = await new Session(config(root), ui, () => provider).run('create a.ts');
-    assert.equal(out, 'done');
-  } finally {
-    delete process.env.KRONOS_SKIP_END;
-    ui.close();
-  }
-});
-
-test('read-only mode denies writes and the loop guard stops identical repeated calls', async () => {
+test('read-only mode denies writes and the loop guard warns after identical calls with identical results', async () => {
   const root = workspace();
   const provider = new ScriptedProvider([
     () => call('write_file', { path: 'x.txt', content: 'no' }),
@@ -167,7 +132,10 @@ test('read-only mode denies writes and the loop guard stops identical repeated c
     () => call('bash', { command: 'ls' }),
     () => call('bash', { command: 'ls' }),
     () => call('bash', { command: 'ls' }),
-    () => answer('ok'),
+    ({ user }) => {
+      assert.match(user.at(-1)!, /^\[loop\] The same tool calls returned the same results/);
+      return answer('ok');
+    },
   ]);
   const ui = UI.create();
   const session = new Session(config(root, { mode: 'read-only' }), ui, () => provider);
@@ -175,7 +143,6 @@ test('read-only mode denies writes and the loop guard stops identical repeated c
   ui.close();
   assert.match(provider.results[0]![0]!.output, /read-only mode/);
   assert.equal(fs.existsSync(path.join(root, 'x.txt')), false);
-  assert.match(provider.results[4]![0]!.output, /Loop guard/);
 });
 
 test('step limit and token budget stop the agent', async () => {
@@ -387,29 +354,6 @@ test('orchestrator: without the decision engine it stops with an explanation ins
   assert.match(out, /Não foi possível escrever o contrato.*ENOENT/);
 });
 
-test('RAG primitives: tokenizer, chunking, BM25 and cosine', () => {
-  assert.deepEqual(tokenize('getUserById user_name'), ['get', 'user', 'by', 'id', 'user', 'name']);
-  const chunks = chunkFile('f.ts', Array.from({ length: 130 }, (_, i) => `line ${i}`).join('\n'));
-  assert.equal(chunks[0]!.start, 1);
-  assert.equal(chunks.at(-1)!.end, 130);
-  const scores = bm25(['auth'], [['auth', 'login'], ['render', 'view']]);
-  assert.ok(scores[0]! > scores[1]!);
-  assert.equal(cosine([1, 0], [1, 0]), 1);
-  assert.equal(cosine([1, 0], [0, 1]), 0);
-});
-
-test('semantic_search falls back to BM25 when no embedding model is available', async () => {
-  const root = workspace();
-  fs.writeFileSync(path.join(root, 'auth.ts'), 'export function login(user: string) { return checkPassword(user); }\n');
-  fs.writeFileSync(path.join(root, 'view.ts'), 'export function render() { return "<div/>"; }\n');
-  const ui = UI.create();
-  const session = new Session(config(root), ui, () => new ScriptedProvider([]));
-  const { hits, mode } = await session.codeIndex.search('login password', 3, new AbortController().signal);
-  ui.close();
-  assert.match(mode, /lexical/);
-  assert.equal(hits[0]?.file, 'auth.ts');
-});
-
 test('markdown lines are rendered for the terminal, including code fences', () => {
   const state = { inFence: false };
   const plain = (line: string) => stripVTControlCharacters(renderMarkdownLine(line, state));
@@ -484,7 +428,7 @@ test('sessions are saved after each task, resumed with their history and forked 
   ui.close();
 });
 
-test('on a follow-up like "pode continuar", the reviewer and the requirements check get every request of the conversation', async () => {
+test('on a follow-up like "pode continuar", the reviewer gets the request of the conversation', async () => {
   const root = workspace();
   const goals: string[] = [];
   const nudges: string[] = [];
@@ -509,7 +453,6 @@ test('on a follow-up like "pode continuar", the reviewer and the requirements ch
   } finally {
     ui.close();
   }
-  assert.match(nudges.find((n) => n.startsWith('[requirements]'))!, /escreva a = 2 em src\/a\.js[\s\S]*pode continuar/);
   assert.match(goals[0]!, /escreva a = 2 em src\/a\.js/);
 });
 
@@ -540,7 +483,6 @@ test('a test the agent wrote in an earlier message of the conversation stays edi
   const main = new ScriptedProvider([
     () => call('write_file', { path: 'tests/a.spec.js', content: "import assert from 'node:assert/strict';\nassert.equal(soma(1, 1), 3);\n" }),
     () => call('bash', { command: 'node -e 1' }),
-    () => answer('escrevi o teste'),
     () => answer('escrevi o teste'),
     () => call('edit_file', { path: 'tests/a.spec.js', old_string: 'soma(1, 1), 3)', new_string: 'soma(1, 1), 2)' }),
     ({ results: r }) => {
@@ -589,71 +531,6 @@ test('verification gate asks once to run something after unverified code edits',
   }
 });
 
-test('run_code follows the harness: reads bring nested instructions; only a real command counts as verification', async () => {
-  const root = workspace();
-  fs.mkdirSync(path.join(root, 'db'));
-  fs.writeFileSync(path.join(root, 'db/CLAUDE.md'), 'Migrations are applied by hand.');
-  fs.writeFileSync(path.join(root, 'db/init.sql'), 'select 1;\n');
-  const ui = UI.create();
-  try {
-    const readOnly = new ScriptedProvider([
-      () => call('write_file', { path: 'src/a.js', content: 'export const a = 1;\n' }),
-      () => call('run_code', { language: 'node', code: "console.log(await tools.read_file({ path: 'db/init.sql' }))" }),
-      () => answer('pronto'),
-      ({ user }) => (assert.match(user.at(-1)!, /^\[verification\]/), answer('pronto')),
-      () => answer('pronto'),
-    ]);
-    await new Session(config(root, { mode: 'auto' }), ui, () => readOnly).run('crie a');
-    assert.match(readOnly.results[1]![0]!.output, /select 1;[\s\S]*\[instructions from db\/CLAUDE\.md — they apply to files under db\/\]\nMigrations are applied by hand\./);
-
-    const ran = new ScriptedProvider([
-      () => call('edit_file', { path: 'src/a.js', old_string: '1', new_string: '2' }),
-      () => call('run_code', { language: 'node', code: "console.log(await tools.bash({ command: 'node src/a.js' }))" }),
-      ({ user }) => (assert.doesNotMatch(user.at(-1) ?? '', /^\[verification\]/), answer('feito e testado')),
-      ({ user }) => (assert.doesNotMatch(user.at(-1)!, /^\[verification\]/), answer('feito e testado')),
-    ]);
-    assert.equal(await new Session(config(root, { mode: 'auto' }), ui, () => ran).run('mude a'), 'feito e testado');
-  } finally {
-    ui.close();
-  }
-});
-
-test('report_conflict ends the task with the explanation, but only after an edit and a run since it', async () => {
-  const root = workspace();
-  const ui = UI.create();
-  try {
-    const refused = ({ results }: { results: ToolResult[][] }) => assert.match(results.at(-1)![0]!.output, /^Not reported yet: first implement/);
-    const provider = new ScriptedProvider([
-      () => call('report_conflict', { kind: 'test_contradicts_request', explanation: 'sem editar' }),
-      (r) => (refused(r), call('write_file', { path: 'src/d.js', content: 'export const d = (p, x) => p * (1 - x / 100);\n' })),
-      () => call('report_conflict', { kind: 'test_contradicts_request', explanation: 'sem rodar' }),
-      (r) => (refused(r), call('bash', { command: 'node src/d.js' })),
-      () => call('report_conflict', { kind: 'test_contradicts_request', explanation: 'Implementei 10% de 100 = 90; test.mjs:3 espera 85 e contradiz o pedido.' }),
-    ]);
-    const out = await new Session(config(root, { review: true, mode: 'auto' }), ui, () => provider).run('implemente d');
-    assert.equal(out, 'Implementei 10% de 100 = 90; test.mjs:3 espera 85 e contradiz o pedido.');
-  } finally {
-    ui.close();
-  }
-});
-
-test('toolset per provider: Claude gets bash-only, Ollama models keep the predefined tools', async () => {
-  const ui = UI.create();
-  try {
-    const lean = new ScriptedProvider([() => call('update_plan', { steps: [] }), () => answer('ok')]);
-    await new Session(config(workspace(), { provider: 'anthropic' }), ui, () => lean).run('x');
-    const out = lean.results[0]![0]!.output;
-    assert.match(out, /^Unknown tool "update_plan"\. Available tools: .*\bbash\b/);
-    for (const gone of ['remember', 'run_code', 'list_dir', 'glob', 'grep']) assert.doesNotMatch(out, new RegExp(`\\b${gone}\\b`));
-
-    const full = new ScriptedProvider([() => call('update_plan', { steps: [{ step: 'a', status: 'in_progress' }] }), () => answer('ok')]);
-    await new Session(config(workspace()), ui, () => full).run('x');
-    assert.equal(full.results[0]![0]!.isError, false);
-  } finally {
-    ui.close();
-  }
-});
-
 test('skills: Claude-compatible SKILL.md discovery, loading on demand, and no tool when there are none', async () => {
   const { findSkills, frontmatter, readSkill } = await import('../src/skills.js');
   process.env.KRONOS_USER_SKILLS = 'off';
@@ -683,7 +560,7 @@ test('skills: Claude-compatible SKILL.md discovery, loading on demand, and no to
     const noSkills = new ScriptedProvider([({ system }) => (seen.push(system), call('skill', { name: 'x' })), () => answer('ok')]);
     await new Session(config(empty), ui, () => noSkills).run('x');
     assert.doesNotMatch(seen[1]!, /<skills>/);
-    assert.match(noSkills.results[0]![0]!.output, /^Unknown tool "skill"/);
+    assert.match(noSkills.results[0]![0]!.output, /^Tool "skill" not found/);
   } finally {
     ui.close();
   }
@@ -704,16 +581,16 @@ test('offload: a huge tool output is saved to a git-ignored file and the model g
     const saved = /saved in (\.kronos\/outputs\/\S+\.txt)/.exec(big)?.[1];
     assert.ok(saved, big.slice(3000, 3400));
     assert.ok(big.length < 7000);
-    assert.match(big, /^1\n2\n3\n/);
+    assert.match(big, /^Exit code: 0\nWall time: [\d.]+ s\nOutput:\n1\n2\n3\n/);
     const [head, tail] = big.split(/\n\.\.\. \[output too long[^\n]*\] \.\.\.\n/);
     assert.equal(head!.length, 2400);
     assert.equal(tail!.length, 3600);
-    assert.match(big, /50000\n\[exit code 0\]$/);
+    assert.match(big, /50000$/);
     assert.match(big, /grep it or read the lines you need with read_file/);
     const full = fs.readFileSync(path.join(root, saved), 'utf8');
-    assert.equal(full.split('\n').length, 50001);
+    assert.equal(full.split('\n').length, 50003);
     assert.match(full, /\n25000\n/);
-    assert.equal(provider.results[1]![0]!.output, 'small\n[exit code 0]');
+    assert.match(provider.results[1]![0]!.output, /^Exit code: 0\nWall time: [\d.]+ s\nOutput:\nsmall$/);
     assert.equal(provider.results[0]![0]!.savedAs, saved);
     assert.equal(provider.results[1]![0]!.savedAs, undefined);
     assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }), '');
@@ -726,14 +603,12 @@ test('progressive tools: rare tools stay out of the prompt until load_tools or a
   process.env.KRONOS_USER_SKILLS = 'off';
   const root = workspace();
   fs.mkdirSync(path.join(root, '.claude/skills/docs-lookup'), { recursive: true });
-  fs.writeFileSync(path.join(root, '.claude/skills/docs-lookup/SKILL.md'), '---\nname: docs-lookup\ndescription: Use when you need to save notes.\nallowed-tools: Remember, Bash\n---\nSave the note.\n');
+  fs.writeFileSync(path.join(root, '.claude/skills/docs-lookup/SKILL.md'), '---\nname: docs-lookup\ndescription: Use when you need to save notes.\nallowed-tools: WebFetch, Bash\n---\nSave the note.\n');
   const ui = UI.create();
   const offered: string[][] = [];
   try {
     const provider = new ScriptedProvider([
       () => call('web_fetch', { url: 'http://127.0.0.1:9' }),
-      () => call('load_tools', { group: 'web' }),
-      () => call('run_code', { language: 'node', code: 'console.log(6 * 7)' }),
       () => call('skill', { name: 'docs-lookup' }),
       () => answer('ok'),
     ]);
@@ -742,87 +617,28 @@ test('progressive tools: rare tools stay out of the prompt until load_tools or a
       wrapped.step = (req) => (offered.push(req.tools.map((t) => t.name)), provider.step(req));
       return wrapped;
     });
-    await session.run('quanto é 6 vezes 7?');
-    const [first, , third] = provider.results.map((r) => r[0]!);
-    assert.match(first!.output, /^Unknown tool "web_fetch"\. Available tools: .*\bload_tools\b/);
-    for (const hidden of ['web_fetch', 'remember', 'semantic_search']) assert.ok(!offered[0]!.includes(hidden), hidden);
-    assert.ok(offered[0]!.includes('recall') && offered[0]!.includes('run_code'));
-    assert.match(provider.results[1]![0]!.output, /^Loaded: web_fetch\./);
-    assert.equal(third!.isError, false);
-    assert.match(third!.output, /^42\n/);
-    assert.match(provider.results[3]![0]!.output, /\[tools\] Loaded for this skill: remember\.$/);
-    assert.ok(offered[4]!.includes('web_fetch') && offered[4]!.includes('remember'));
+    await session.run('busque a documentação');
+    assert.match(provider.results[0]![0]!.output, /^Tool "web_fetch" not found\. .*Available tools: .*\bload_tools\b/);
+    assert.ok(!offered[0]!.includes('web_fetch'));
+    assert.match(provider.results[1]![0]!.output, /\[tools\] Loaded for this skill: web_fetch\.$/);
+    assert.ok(offered[2]!.includes('web_fetch'));
 
     const pinned = new ScriptedProvider([() => answer('ok')]);
     const seen: string[][] = [];
-    const withList = new Session(config(workspace(), { tools: ['bash', 'run_code'] }), ui, () => {
+    const withList = new Session(config(workspace(), { tools: ['bash', 'grep'] }), ui, () => {
       const wrapped = Object.create(pinned) as ScriptedProvider;
       wrapped.step = (req) => (seen.push(req.tools.map((t) => t.name)), pinned.step(req));
       return wrapped;
     });
     await withList.run('x');
-    assert.deepEqual(seen[0]!.sort(), ['bash', 'run_code', 'status']);
+    assert.deepEqual(seen[0]!.sort(), ['bash', 'finish', 'grep']);
   } finally {
     ui.close();
   }
 });
 
-test('status tool: the opening states the step budget and the agent can ask how many steps are left', async () => {
-  const root = workspace();
-  const provider = new ScriptedProvider([
-    ({ user }) => {
-      assert.match(user[0]!, /You have up to 20 steps for this task\. Call the status tool/);
-      return call('read_file', { path: 'missing.ts' });
-    },
-    () => call('status', {}),
-    ({ results }) => {
-      assert.match(results.at(-1)![0]!.output, /^You have used 2 of your 20 steps \(18 left\)\. Elapsed: \d+ min\. Tokens used: \d+\.$/);
-      return answer('ok');
-    },
-  ]);
-  const ui = UI.create();
-  await new Session(config(root, { maxSteps: 20 }), ui, () => provider).run('look');
-  ui.close();
-});
-
-test('requirements: after code changes the agent checks every item of the request before finishing', async () => {
-  const root = workspace();
-  const task = 'Do this:\n- create a.ts\n- create b.ts\n- create c.ts';
-  const provider = new ScriptedProvider([
-    () => call('write_file', { path: 'a.ts', content: 'export const a = 1;\n' }),
-    () => call('bash', { command: 'node -e 1' }),
-    () => answer('done'),
-    ({ user }) => {
-      assert.match(user.at(-1)!, /^\[requirements\]/);
-      assert.ok(user.at(-1)!.includes(`<original_request>\n${task}\n</original_request>`));
-      return answer('- create a.ts: PASS\n- create b.ts: FAIL\nreport');
-    },
-  ]);
-  const ui = UI.create();
-  const out = await new Session(config(root), ui, () => provider).run(task);
-  ui.close();
-  assert.match(out, /report$/);
-});
-
-test('report_conflict: without anyone to answer, a question before any edit is refused and the agent implements', async () => {
-  const root = workspace();
-  const provider = new ScriptedProvider([
-    () => call('report_conflict', { kind: 'out_of_scope', explanation: 'Devo começar do zero?' }),
-    ({ results }) => {
-      assert.equal(results.at(-1)![0]!.isError, true);
-      assert.match(results.at(-1)![0]!.output, /^Not reported: nobody is available/);
-      return call('write_file', { path: 'a.ts', content: 'export const a = 1;\n' });
-    },
-    () => call('bash', { command: 'node -e 1' }),
-    () => answer('feito'),
-    () => answer('feito'),
-  ]);
-  const ui = UI.create();
-  assert.equal(await new Session(config(root), ui, () => provider).run('crie a.ts'), 'feito');
-  ui.close();
-});
-
 const ts5 = process.env.KRONOS_TEST_TS5;
+
 test('edits that introduce type errors are reverted; unused names are only reported', { skip: !ts5 && 'set KRONOS_TEST_TS5 to a typescript@5 folder' }, async () => {
   const root = workspace();
   fs.mkdirSync(path.join(root, 'src'));
@@ -899,7 +715,7 @@ test('gate: the agent sees the checks and is sent back at every turn end while o
     () => answer('done'),
     ({ user }) => {
       assert.equal(user.filter((u) => u.startsWith('[gate]')).length, 3);
-      assert.match(user.at(-1)!, /^\[gate\] 0\/1 checks pass\. You have used 4 of your 10 steps \(6 left\)\. You cannot finish yet/);
+      assert.match(user.at(-1)!, /^\[gate\] 0\/1 checks pass\. You cannot finish yet/);
       assert.match(user.at(-1)!, /a\.txt is wrong/);
       return call('write_file', { path: 'a.txt', content: 'ok' });
     },
@@ -938,54 +754,10 @@ test('tool descriptions state the preconditions and consequences that caused rej
   assert.match(describe('edit_file'), /rename/i);
   assert.match(describe('edit_file'), /replace_all/);
   assert.match(describe('write_file'), /reverted/);
-  assert.match(describe('bash'), /does not change any file/);
+  assert.match(describe('bash'), /not progress/);
   assert.match(describe('bash'), /saved to a file/);
 });
 
-test('skill review: after a long task a separate call saves a class-level skill under Kronos home; project skills stay read-only', async () => {
-  const { managedSkillsDir, findSkills } = await import('../src/skills.js');
-  const { saveProposal } = await import('../src/skill-review.js');
-  process.env.KRONOS_USER_SKILLS = 'on';
-  const root = workspace();
-  fs.mkdirSync(path.join(root, '.claude/skills/project-rule'), { recursive: true });
-  fs.writeFileSync(path.join(root, '.claude/skills/project-rule/SKILL.md'), '---\nname: project-rule\ndescription: Project rule.\n---\nx');
-  const ui = UI.create();
-  try {
-    const long = Array.from({ length: 10 }, () => () => call('status', {}));
-    const main = new ScriptedProvider([...long, () => answer('feito')]);
-    const seen: string[] = [];
-    const reviewer = new ScriptedProvider([
-      ({ user, system }) => (seen.push(system, user.at(-1)!), answer('{"name": "status-polling", "description": "Use when tracking step budget.", "body": "# Steps\\nCall status once."}')),
-    ]);
-    const factories = [main, reviewer];
-    const session = new Session(config(root, { maxSteps: 20 }), ui, () => factories.shift() ?? main);
-    assert.equal(await session.run('acompanhe o orçamento'), 'feito');
-    await session.reviewing;
-    assert.match(seen[0]!, /CLASS-LEVEL skill/);
-    assert.match(seen[1]!, /- project-rule \(read-only\): Project rule\./);
-    assert.match(seen[1]!, /<task>\nacompanhe o orçamento\n<\/task>/);
-    assert.match(seen[1]!, /✓ status \n/);
-    const file = path.join(managedSkillsDir(), 'status-polling', 'SKILL.md');
-    assert.equal(fs.readFileSync(file, 'utf8'), '---\nname: status-polling\ndescription: Use when tracking step budget.\n---\n\n# Steps\nCall status once.\n');
-    assert.ok(findSkills(root).some((s) => s.name === 'status-polling'));
-
-    const skills = findSkills(root);
-    assert.equal(saveProposal({ name: 'project-rule', description: 'd', body: 'b' }, skills), null);
-    assert.equal(saveProposal({ name: 'Card-746 fix', description: 'd', body: 'b' }, skills), null);
-    assert.equal(saveProposal({ name: null }, skills), null);
-    assert.match(saveProposal({ name: 'status-polling', description: 'Updated.', body: 'New body' }, skills)!, /status-polling\/SKILL\.md$/);
-    assert.match(fs.readFileSync(file, 'utf8'), /description: Updated\.\n---\n\nNew body\n$/);
-
-    const short = new ScriptedProvider([() => answer('ok')]);
-    const quiet = new Session(config(workspace()), ui, () => short);
-    await quiet.run('x');
-    await quiet.reviewing;
-    assert.equal(short.user.length, 1);
-  } finally {
-    process.env.KRONOS_USER_SKILLS = 'off';
-    ui.close();
-  }
-});
 test('a message sent while the agent works reaches it at the next step and joins the request', async () => {
   const root = workspace();
   let session!: Session;
@@ -1092,31 +864,6 @@ test('validateInput unwraps arguments the model nested under parameters/argument
   assert.match(validateInput(bash, { path: 'a.ts', limit: 10 }).error!, /missing required field "command"/);
 });
 
-test('scope check covers files edited in earlier messages of the same conversation', async () => {
-  const root = workspace();
-  execFileSync('git', ['init', '-q'], { cwd: root });
-  const ui = UI.create();
-  const provider = new ScriptedProvider([
-    () => call('write_file', { path: 'api/a.ts', content: 'export const a = 1;\n' }),
-    () => call('write_file', { path: 'api/b.ts', content: 'export const b = 1;\n' }),
-    () => call('write_file', { path: 'web/x.ts', content: 'export const x = 1;\n' }),
-    () => answer('verificado'),
-    ({ user }) => {
-      assert.match(user.at(-1)!, /check the files outside it:\n- web\/x\.ts/);
-      return answer('mantido: a tela quebra sem ele');
-    },
-  ]);
-  try {
-    const session = new Session(config(root, { maxSteps: 3 }), ui, () => provider);
-    await session.run('ajuste a api');
-    process.env.KRONOS_SKIP_END = 'verify,requirements';
-    assert.equal(await session.run('pode continuar'), 'mantido: a tela quebra sem ele');
-  } finally {
-    delete process.env.KRONOS_SKIP_END;
-    ui.close();
-  }
-});
-
 test('an openai session adds up the cost each step reports, and says unknown when none came', () => {
   const ui = UI.create();
   const session = new Session(config(workspace(), { provider: 'openai' }), ui, () => new ScriptedProvider([]));
@@ -1174,4 +921,76 @@ test('/compact says when the provider has no manual compaction, and usage has no
   assert.equal(await session.compact(), null);
   assert.deepEqual(await session.usageReport(), { bars: [] });
   ui.close();
+});
+
+test('finish: the first call after changes returns the diff and a checklist; the second ends with the report', async () => {
+  const root = workspace();
+  const provider = new ScriptedProvider([
+    () => call('write_file', { path: 'notes.md', content: 'ok\n' }),
+    () => call('finish', { report: 'primeiro' }),
+    ({ results }) => {
+      assert.match(results.at(-1)![0]!.output, /^\[finish\] Before the task ends, review your changes below\.[\s\S]*notes\.md/);
+      return call('finish', { report: 'escrevi notes.md' });
+    },
+  ]);
+  const ui = UI.create();
+  try {
+    assert.equal(await new Session(config(root), ui, () => provider).run('crie notes.md'), 'escrevi notes.md');
+  } finally {
+    ui.close();
+  }
+});
+
+test('finish without changes ends at once; finish mixed with other calls is refused', async () => {
+  const provider = new ScriptedProvider([
+    () => ({ text: '', toolCalls: [{ id: 'a', name: 'grep', input: { pattern: 'x' } }, { id: 'b', name: 'finish', input: { report: 'cedo' } }], stop: 'tool_use', usage }),
+    ({ results }) => {
+      assert.match(results.at(-1)![1]!.output, /^Not finished: call finish alone/);
+      return call('finish', { report: 'nada a mudar' });
+    },
+  ]);
+  const ui = UI.create();
+  try {
+    assert.equal(await new Session(config(workspace()), ui, () => provider).run('confira x'), 'nada a mudar');
+  } finally {
+    ui.close();
+  }
+});
+
+test('an empty reply is retried and an announced next action gets "Please continue."', async () => {
+  const provider = new ScriptedProvider([
+    () => answer(''),
+    ({ user }) => {
+      assert.match(user.at(-1)!, /^\[System: your last reply had no text and no tool call/);
+      return answer('Achei o arquivo. Agora vou editar o service.');
+    },
+    ({ user }) => {
+      assert.equal(user.at(-1), 'Please continue.');
+      return answer('pronto');
+    },
+  ]);
+  const ui = UI.create();
+  try {
+    assert.equal(await new Session(config(workspace()), ui, () => provider).run('x'), 'pronto');
+  } finally {
+    ui.close();
+  }
+});
+
+test('after a verified edit, a streak of steps without changes gets one nudge to finish', async () => {
+  const root = workspace();
+  const script: Script[] = [() => call('write_file', { path: 'a.js', content: 'export const a = 1;\n' }), () => call('bash', { command: 'node a.js' })];
+  for (let i = 0; i < 6; i++) script.push(() => call('grep', { pattern: `a${i}` }));
+  script.push(({ user }) => {
+    assert.match(user.at(-1)!, /^\[progress\] Your last edit was verified 6 steps ago/);
+    return call('finish', { report: 'feito' });
+  });
+  script.push(() => call('finish', { report: 'feito' }));
+  const provider = new ScriptedProvider(script);
+  const ui = UI.create();
+  try {
+    assert.equal(await new Session(config(root, { maxSteps: 20 }), ui, () => provider).run('crie a.js'), 'feito');
+  } finally {
+    ui.close();
+  }
 });

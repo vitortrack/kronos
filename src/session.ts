@@ -2,17 +2,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Agent } from './agent.js';
 import type { Criterion } from './contract.js';
-import { MemoryStore } from './memory.js';
 import { findSkills, type Skill } from './skills.js';
 import { installPlugin, pluginsReport, removePlugin } from './plugins.js';
 import { closeMcp, mcpHub } from './mcp.js';
-import { reviewSkills, type ReviewInput } from './skill-review.js';
 import type { Role } from './prompts.js';
 import { AnthropicProvider, type Effort } from './providers/anthropic.js';
 import { kronosHome } from './paths.js';
 import { OllamaProvider } from './providers/ollama.js';
 import { OpenAICompatProvider, openRouterUsage, percentOf } from './providers/openai.js';
-import { CodeIndex, Embedder } from './rag.js';
 import { workspaceDiff } from './scope.js';
 import { newSessionId, SessionStore, type SavedSession, type Turn } from './sessions.js';
 import { allowsTestEdits, clip, type Mode, type PlanItem, type ToolContext } from './tools.js';
@@ -27,8 +24,6 @@ export const DEFAULT_MODEL: Record<ProviderName, string> = {
   openai: 'qwen/qwen3-coder-next',
 };
 
-export const DEFAULT_EMBED_MODEL = 'qwen3-embedding:0.6b';
-
 export interface Config {
   provider: ProviderName;
   model: string;
@@ -39,7 +34,6 @@ export interface Config {
   reviewModel?: string;
   effort: Effort;
   numCtx: number;
-  embedModel: string;
   tokenBudget: number;
   lang: string;
   interactive?: boolean;
@@ -81,8 +75,6 @@ export class Session {
   private main: Agent;
   private spawned = 0;
   private readonly logFile: string | null;
-  readonly codeIndex: CodeIndex;
-  readonly memory: MemoryStore;
   readonly skills: Skill[];
   readonly activeSkills = new Set<string>();
   readonly allowed = new Set<string>();
@@ -91,7 +83,6 @@ export class Session {
   turns: Turn[] = [];
   readonly testOriginals = new Map<string, string | null>();
   private created = new Date().toISOString();
-  reviewing: Promise<void> = Promise.resolve();
   private queued: string[] = [];
   private injected: string[] = [];
 
@@ -100,9 +91,6 @@ export class Session {
     readonly ui: AgentUI,
     private readonly makeProvider: ProviderFactory = defaultFactory(cfg),
   ) {
-    const embedder = new Embedder(cfg.embedModel);
-    this.codeIndex = new CodeIndex(cfg.root, embedder);
-    this.memory = new MemoryStore(cfg.root, embedder);
     this.skills = findSkills(cfg.root);
     this.sessions = new SessionStore(cfg.root);
     this.main = new Agent(this, 'main', ui);
@@ -138,8 +126,6 @@ export class Session {
       },
       testEditsAllowed: allowsTestEdits(task),
       testOriginals: session.testOriginals,
-      codeIndex: session.codeIndex,
-      memory: session.memory,
       skills: session.skills,
       files,
       allowed: session.allowed,
@@ -240,19 +226,6 @@ export class Session {
     const feedback = await this.spawn('critic', task, parent, this.cfg.reviewModel);
     const verdict = /<evaluation>\s*(\w+)\s*<\/evaluation>/.exec(feedback)?.[1];
     return { approved: verdict === 'PASS', feedback: /<feedback>([\s\S]*?)<\/feedback>/.exec(feedback)?.[1]?.trim() || feedback };
-  }
-
-  reviewSkills(input: Omit<ReviewInput, 'turns'>): void {
-    if (process.env.KRONOS_USER_SKILLS === 'off') return;
-    const signal = this.signal;
-    const turns = [...this.turns];
-    this.reviewing = this.reviewing
-      .then(() => reviewSkills(this.newProvider(), this.skills, { ...input, turns }, signal))
-      .then(({ usage, saved }) => {
-        this.addUsage(usage);
-        this.log({ event: 'skill-review', saved });
-      })
-      .catch((e: unknown) => this.log({ event: 'skill-review-failed', error: e instanceof Error ? e.message : String(e) }));
   }
 
   queue(text: string): void {
