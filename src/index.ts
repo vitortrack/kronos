@@ -13,7 +13,7 @@ import { DEFAULT_MODEL, Session, type Config } from './session.js';
 import type { Mode } from './tools.js';
 import { UI } from './ui.js';
 
-const HELP = `Kronos — agente de código autônomo (ReAct + planejamento + reflexão + multiagente + RAG)
+const HELP = `Kronos — agente de código autônomo (ReAct + planejamento + reflexão + multiagente)
 
 Uso:
   kronos [opções] "tarefa"      executa a tarefa e sai
@@ -32,6 +32,8 @@ Opções:
       --attempts <n>                 melhor de N: tentativas isoladas, escolhe a que passa nos testes com o menor diff
       --review                       liga a revisão por um agente crítico (padrão: desligada; a checagem de
                                      escopo e o portão de verificação continuam sempre ativos)
+      --review-model <modelo>        a revisão roda noutro modelo (claude-* exige ANTHROPIC_API_KEY) e já liga a revisão
+      --no-review                    desliga a revisão mesmo com --review-model ou KRONOS_REVIEW_MODEL
       --max-steps <n>                passos por agente (padrão: 80)
       --budget <tokens>              para quando o total de tokens passar disso (padrão: sem limite)
       --effort <low|medium|high|xhigh|max>  esforço de raciocínio do Claude (padrão: high)
@@ -44,7 +46,7 @@ Opções:
       --fork                         com -c ou -r: continua numa cópia, sem alterar a original
   -h, --help
 
-Variáveis: OLLAMA_HOST, ANTHROPIC_API_KEY, OPENROUTER_API_KEY, OPENAI_BASE_URL, KRONOS_MODEL, KRONOS_SANDBOX, KRONOS_LANG, KRONOS_HOME, KRONOS_MCP, KRONOS_CLAUDE_CONFIG, KRONOS_USER_SKILLS`;
+Variáveis: OLLAMA_HOST, ANTHROPIC_API_KEY, OPENROUTER_API_KEY, OPENAI_BASE_URL, KRONOS_MODEL, KRONOS_REVIEW_MODEL, KRONOS_LANG, KRONOS_HOME, KRONOS_MCP, KRONOS_CLAUDE_CONFIG, KRONOS_USER_SKILLS`;
 
 const COMMANDS = `Comandos:
   /plan                    mostra o plano atual

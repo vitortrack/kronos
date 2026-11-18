@@ -54,9 +54,9 @@ O mesmo núcleo roda no CLI e na extensão do VS Code, então os requisitos são
   - **Ollama** instalado e rodando em `http://localhost:11434`. Para outro endereço, use `OLLAMA_HOST` no CLI ou *Settings → Kronos → Ollama Host* na extensão. O modelo padrão, `glm-5.3-flash:cloud`, roda na nuvem do Ollama: é preciso entrar na conta com `ollama signin`. Modelos locais (`-m qwen3:8b`, por exemplo) não precisam de conta, só de `ollama pull`.
   - **Ou Claude**, com `ANTHROPIC_API_KEY` no ambiente. Na extensão, a variável precisa existir no ambiente em que o VS Code foi aberto.
   - **Ou uma API compatível com OpenAI** (OpenRouter por padrão), com `OPENROUTER_API_KEY` no ambiente e `-p openai`. O modelo padrão é `qwen/qwen3-coder-next`; outro endereço vai em `OPENAI_BASE_URL`.
-- **Linux ou macOS, com `bash`, `git`, `grep` e `find` no PATH** (os dois já trazem). No **Windows**, o Kronos roda dentro do WSL: veja o [Guia passo a passo](#guia-passo-a-passo-vs-code).
+- **Linux ou macOS, com `bash`, `git`, `grep` e `find` no PATH** (os dois já trazem). A extensão do VS Code é publicada só para Linux x64; no macOS, use o CLI. No **Windows**, o Kronos roda dentro do WSL: veja o [Guia passo a passo](#guia-passo-a-passo-vs-code).
 
-O agente roda no laço próprio do Kronos, com o modelo configurado — Ollama ou Claude (este pela API, com `ANTHROPIC_API_KEY`). O modo multiagente (`--orchestrate`), as checagens de pronto (`--gate`) e a reescrita de harness (`src/rhi.ts`) usam esse mesmo modelo, por meio de um agente só de leitura que devolve as decisões em JSON validado.
+O agente roda no laço próprio do Kronos, com o modelo configurado — Ollama, Claude (pela API, com `ANTHROPIC_API_KEY`) ou uma API compatível com OpenAI. O modo multiagente (`--orchestrate`), as checagens de pronto (`--gate`) e a reescrita de harness (`src/rhi.ts`) usam esse mesmo modelo, por meio de um agente só de leitura que devolve as decisões em JSON validado.
 
 **Opcional, por recurso**
 
@@ -72,10 +72,12 @@ npm run build
 npm link            # deixa o comando `kronos` disponível no sistema
 ```
 
-Provedor local (padrão quando não há chave da Anthropic):
+Ollama (padrão quando não há chave da Anthropic):
 
 ```bash
-# modelo de chat padrão: glm-5.3-flash:cloud (troque com -m, ex.: -m qwen3:8b)
+curl -fsSL https://ollama.com/install.sh | sh
+ollama signin            # o modelo padrão, glm-5.3-flash:cloud, roda na nuvem do Ollama
+ollama pull qwen3:8b     # opcional: modelo local, sem conta (use com -m qwen3:8b)
 ```
 
 Claude: exporte `ANTHROPIC_API_KEY` e o Kronos passa a usar `claude-opus-5-5` (ou force com `-p anthropic`).
@@ -95,7 +97,7 @@ npm run package                                   # gera kronos-linux-x64-<vers�
 code --install-extension kronos-linux-x64-*.vsix --force
 ```
 
-Configurações em *Settings → Kronos*. O modelo também pode ser trocado no seletor do chat, que lista os modelos instalados no Ollama. Referências `arquivo:linha` abrem no editor; permissões aparecem como botões Permitir/Negar; prints e arquivos podem ser anexados (📎, Ctrl+V ou arrastar): imagens vão para o modelo quando ele tem visão, PDFs viram texto com `pdftotext`. A opção **multiagente** usa o mesmo fluxo do `--orchestrate`.
+Configurações em *Settings → Kronos*. O modelo também pode ser trocado no seletor do chat, que lista os modelos instalados no Ollama, os do Claude (com `ANTHROPIC_API_KEY`) e os do OpenRouter (com `OPENROUTER_API_KEY`). Referências `arquivo:linha` abrem no editor; permissões aparecem como botões Permitir/Negar; prints e arquivos podem ser anexados (📎, Ctrl+V ou arrastar): imagens vão para o modelo quando ele tem visão, PDFs viram texto com `pdftotext`. A opção **multiagente** usa o mesmo fluxo do `--orchestrate`, e **melhor de 3** o do `--attempts 3`.
 
 ## Guia passo a passo (VS Code)
 
@@ -169,7 +171,7 @@ Abra as configurações com `Ctrl+,` e busque **kronos**. No Windows, mude na ab
 
 ### 7. Usar o chat
 
-Clique no **ícone do relógio** na barra lateral, escreva a pergunta ou a tarefa e clique em **Enviar**. Referências `arquivo:linha` nas respostas abrem o arquivo na linha. O seletor ao lado do *Enviar* troca o modelo entre os instalados no Ollama.
+Clique no **ícone do relógio** na barra lateral, escreva a pergunta ou a tarefa e clique em **Enviar**. Referências `arquivo:linha` nas respostas abrem o arquivo na linha. O seletor ao lado do *Enviar* troca o modelo entre os instalados no Ollama e, com a chave no ambiente, os do Claude e do OpenRouter.
 
 ![Chat do Kronos com uma pergunta, a resposta e o seletor de modelo](vscode/media/guide/07-chat.png)
 
@@ -202,6 +204,7 @@ kronos -p anthropic --effort xhigh "investigue o vazamento de memória"
 | `--attempts <n>` | melhor de N: tentativas isoladas, fica a que passa nos testes com o menor diff |
 | `--review-model <modelo>` | a revisão roda noutro modelo (ex.: um modelo maior do Ollama), como agente crítico do próprio motor Kronos, só leitura, e já liga a revisão; a tarefa continua no modelo principal. Modelos `claude-*` usam o provedor Anthropic do Kronos (exige `ANTHROPIC_API_KEY`). Também `KRONOS_REVIEW_MODEL` e, na extensão, `kronos.reviewModel` |
 | `--review` | liga a revisão por um agente crítico (padrão: desligada; medido: mesmo acerto e 19–38% menos tokens sem ela, com a checagem de escopo e o portão de verificação sempre ativos) |
+| `--no-review` | desliga a revisão mesmo com `--review-model` ou `KRONOS_REVIEW_MODEL` definidos |
 | `--max-steps <n>` | limite de passos por agente (padrão 80) |
 | `--budget <tokens>` | para quando o consumo total passar do limite |
 | `--effort <nível>` | esforço de raciocínio do Claude (`low` … `max`) |
@@ -247,13 +250,11 @@ kronos -C ../meu-projeto --mode read-only
 › /lang es              # daqui em diante, tudo em espanhol
 ```
 
-Antes de responder, o agente investiga por vários ângulos: busca semântica, `grep` com sinônimos em português e inglês e a cadeia definição → chamadores → fluxo de dados. A resposta segue um formato fixo:
+O agente lê os arquivos envolvidos antes de responder (não especula sobre código que não abriu) e responde em texto, sem passar pelo `finish`:
 
-- **resposta direta** na primeira frase;
+- **resposta direta** primeiro;
 - **evidência** com `arquivo:linha` e só os trechos relevantes do código;
-- **fato × dedução** separados, dizendo o que não foi verificado;
-- **o que reutilizar**: a função, componente ou padrão existente, com exemplo de uso;
-- **pegadinhas** só quando importam.
+- **o que não foi verificado**, dito explicitamente.
 
 A saída é Markdown renderizado no terminal (títulos, listas, negrito, blocos de código).
 
@@ -278,7 +279,7 @@ A saída é Markdown renderizado no terminal (títulos, listas, negrito, blocos 
 | **1. Núcleo cognitivo** | Persona de engenheiro sênior, método de resolução (evidência → causa raiz → decisão → verificação → reflexão → aprendizado), guardrails (escopo, segredos, ações destrutivas) e um prompt por papel (main, worker, explorer, planner, critic). Instruções do projeto em `KRONOS.md`, `AGENTS.md` ou `CLAUDE.md` são carregadas automaticamente. | `src/prompts.ts` |
 | **2. Memória** | Histórico da sessão com compactação automática quando a janela do modelo enche: um resumo em cinco seções (visão da tarefa, estado atual, descobertas, próximos passos, contexto a preservar) com o pedido original fixo e os arquivos lidos por último. Saídas antigas de ferramenta são mascaradas em blocos de 10, saídas idênticas ficam só na cópia mais nova e argumentos grandes de chamadas antigas são encurtados. Com Claude, a compactação roda no servidor da Anthropic. Entre execuções, a continuidade vem da nota de passagem (`--handoff`). | `src/providers/ollama.ts`, `src/providers/anthropic.ts` |
 | **3. Planejamento** | Laço ReAct; planner dedicado no modo `--orchestrate`; autocorreção (o erro volta como observação estruturada). **Conclusão:** a ferramenta `finish` mostra o diff e um checklist na primeira chamada e encerra na segunda; antes de encerrar rodam o portão de checagens (`--gate`), o pedido de verificação (se mexeu em código e não rodou nada depois) e o revisor opcional (`--review`), com no máximo 8 bloqueios. Resposta só em texto também encerra (perguntas). **Ritmo:** "Please continue." quando o modelo anuncia a próxima ação e para; nova tentativa em resposta vazia; aviso para concluir quando a última edição já foi verificada e nada mudou há 6 passos. | `src/agent.ts`, `src/orchestrator.ts` |
-| **4. Ferramentas** | `bash`, `read_file`, `write_file`, `edit_file`, `glob`, `grep`, `update_plan`, `delegate`, `finish` e `skill` (só quando há skills); `web_fetch` e as ferramentas MCP entram com `load_tools` ou com uma skill que as cite. Cada descrição diz o que a ferramenta faz, quando usar e quando não usar, os limites e um exemplo. Nome de ferramenta errado recebe as mais parecidas ("Did you mean"). O `bash` devolve `Exit code`, `Wall time` e a saída. Saída maior que 20 mil caracteres vai para `.kronos/outputs/` e o modelo recebe o início (40%), o fim (60%) e o caminho. Entradas validadas contra o schema; caminhos presos ao workspace (inclusive via symlink); permissões por modo; detecção de comandos destrutivos; leitura de `.env` e do ambiente de containers sempre pede confirmação. | `src/tools.ts`, `src/validate.ts` |
+| **4. Ferramentas** | `bash`, `read_file`, `write_file`, `edit_file`, `glob`, `grep`, `update_plan`, `delegate`, `finish` e `skill` (só quando há skills); `web_fetch` e as ferramentas MCP entram com `load_tools` ou com uma skill que as cite. Cada descrição diz o que a ferramenta faz, quando usar e quando não usar, os limites e um exemplo. Nome de ferramenta errado recebe as mais parecidas ("Did you mean"). O `bash` devolve `Exit code`, `Wall time` e a saída. Saída maior que 1.500 caracteres também é gravada em `.kronos/`; acima de 20 mil, o modelo recebe só o início (2.400 caracteres), o fim (3.600) e o caminho do arquivo. Entradas validadas contra o schema; caminhos presos ao workspace (inclusive via symlink); permissões por modo; detecção de comandos destrutivos; leitura de `.env` e do ambiente de containers sempre pede confirmação. | `src/tools.ts`, `src/validate.ts` |
 | **5. Observabilidade** | Trace de cada passo (texto do modelo, chamadas, resultados, tokens e custo) em `~/.kronos/sessions/*.jsonl`; contagem de tokens e custo estimado ao fim de cada tarefa; estado final de cada execução (sucesso, limite de passos, orçamento, laço, recusa, interrupção); travas contra loop (limite de passos, orçamento de tokens e detector de travamento: a mesma chamada com o mesmo resultado 4 vezes, o mesmo erro 3 vezes ou um ciclo A/B gera um aviso e, se repetir, encerra) e Ctrl+C para interromper. | `src/session.ts`, `src/agent.ts` |
 
 **Multiagente.** O agente principal age como gerente: delega pesquisa ampla a *explorers* (somente leitura, rodam em paralelo) e subtarefas independentes a *workers*, e cada sub-agente começa com contexto limpo. No `--orchestrate`, o fluxo é contrato → fatias com portão → revisão (veja a tabela de opções).
@@ -495,7 +496,7 @@ npm run eval -- --suite hard --runs 3 --label teste  # roda os cenários e mede
 npm run eval -- --model qwen3:8b                     # compara outro modelo
 ```
 
-17 cenários com testes escondidos (bugs, feature, refatoração, diff, CRLF/tabs, blocos duplicados, Python, escopo, perguntas). A suíte `skills` mede se o agente segue uma skill do projeto; a suíte `long` (fora de `all`) tem tarefas de várias partes com checagens escondidas, onde o modelo ainda erra; a suíte `impossible` (também fora de `all`) traz um teste visível que contradiz o pedido e mede se o agente trapaceia ou relata o conflito. Mede acerto, passos, tokens, tempo, falhas de ferramenta e inglês na prosa; resultados em `eval/results/`.
+A suíte padrão, `all`, junta `base`, `hard` e `real`: 19 cenários com testes escondidos (bugs, feature, refatoração, diff, CRLF/tabs, blocos duplicados, Python, escopo, perguntas, tarefas de projeto real). As suítes `card` (tarefas no formato de card, com regras de projeto) e `harness` (cenário para o texto de harness do RHI) rodam à parte. A suíte `skills` mede se o agente segue uma skill do projeto; a suíte `long` (fora de `all`) tem tarefas de várias partes com checagens escondidas, onde o modelo ainda erra; a suíte `impossible` (também fora de `all`) traz um teste visível que contradiz o pedido e mede se o agente trapaceia ou relata o conflito. Mede acerto, passos, tokens, tempo, falhas de ferramenta e inglês na prosa; resultados em `eval/results/`.
 
 ## Desenvolvimento
 

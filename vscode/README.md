@@ -5,11 +5,12 @@ Chat com o agente de código autônomo Kronos na barra lateral (ícone do relóg
 - Pergunte sobre o código ou peça alterações: ele investiga, altera, verifica e passa por um revisor independente.
 - Referências `arquivo:linha` nas respostas abrem o arquivo na linha.
 - Pedidos de permissão (escrita, comandos) aparecem como botões **Permitir / Negar** (modo `ask`).
-- Troque o modelo no seletor do chat (lista os modelos instalados no Ollama).
+- Troque o modelo no seletor do chat (lista os modelos instalados no Ollama e, com a chave no ambiente, os do Claude e do OpenRouter).
 - Anexe prints e arquivos com 📎, Ctrl+V ou arrastando.
 - Marque **multiagente** para dividir a tarefa em fatias com checagens de pronto e uma revisão final.
+- Marque **melhor de 3** para rodar 3 tentativas isoladas e ficar com a que passa nos testes com o menor diff (3× mais tokens).
 
-Configurações em *Settings → Kronos*: provedor (Ollama local ou Claude), modelo, permissões, idioma e revisão.
+Configurações em *Settings → Kronos*: provedor (Ollama local, Claude ou OpenRouter/API compatível com OpenAI), modelo, permissões, idioma e revisão.
 
 ## Como começar
 
@@ -30,7 +31,7 @@ ollama signin                       # modelo padrão glm-5.3-flash:cloud, na nuv
 
 ![Terminal instalando o Ollama e os modelos](media/guide/05-ollama.png)
 
-Prefere o Claude? Exporte `ANTHROPIC_API_KEY` no ambiente em que o VS Code abre.
+Prefere o Claude? Exporte `ANTHROPIC_API_KEY` no ambiente em que o VS Code abre. Para o OpenRouter, exporte `OPENROUTER_API_KEY`: os modelos dele aparecem no seletor do chat.
 
 **3. Confira as configurações** em `Ctrl+,` → **kronos** (provedor, modelo, permissões e endereço do Ollama). Os padrões já funcionam com o Ollama local.
 
