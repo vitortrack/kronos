@@ -99,6 +99,20 @@ code --install-extension kronos-linux-x64-*.vsix --force
 
 Configurações em *Settings → Kronos*. O modelo também pode ser trocado no seletor do chat, que lista os modelos instalados no Ollama, os do Claude (com `ANTHROPIC_API_KEY`) e os do OpenRouter (com `OPENROUTER_API_KEY`). Referências `arquivo:linha` abrem no editor; permissões aparecem como botões Permitir/Negar; prints e arquivos podem ser anexados (📎, Ctrl+V ou arrastar): imagens vão para o modelo quando ele tem visão, PDFs viram texto com `pdftotext`. A opção **multiagente** usa o mesmo fluxo do `--orchestrate`, e **melhor de 3** o do `--attempts 3`.
 
+## Aplicativo de desktop
+
+O mesmo chat da extensão numa janela própria (Electron), sem precisar do VS Code. A pasta de trabalho é a atual ou a passada como argumento.
+
+```bash
+cd desktop
+npm install
+npm start                              # abre na pasta atual
+node dist/main.js ~/meu-projeto        # abre em outra pasta
+node dist/main.js --navegador          # abre no navegador padrão em vez da janela
+```
+
+Fechar a janela encerra o Kronos. O modelo escolhido no seletor e a conversa aberta de cada pasta ficam em `~/.kronos/desktop.json`; o resto vem das variáveis de ambiente (`KRONOS_MODEL`, `KRONOS_LANG`, `KRONOS_REVIEW_MODEL`, `OLLAMA_HOST`, `KRONOS_PORT`). Referências `arquivo:linha` abrem no VS Code (`code -g`) ou no aplicativo padrão do sistema.
+
 ## Guia passo a passo (VS Code)
 
 Do zero até a primeira pergunta no chat. **No Linux, pule para o passo 4.** No Windows, o Kronos roda dentro do **WSL** (o Linux integrado ao Windows), porque chama `bash`, `grep` e `find` diretamente; o Windows sem WSL não é suportado.

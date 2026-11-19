@@ -1,0 +1,22 @@
+{
+  "name": "kronos-desktop",
+  "version": "0.1.0",
+  "description": "Kronos em janela própria (Electron): o mesmo chat da extensão do VS Code, sem precisar do editor.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "bin": {
+    "kronos-desktop": "dist/main.js"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "check": "tsc -p tsconfig.json",
+    "start": "node build.mjs && node dist/main.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "electron": "44.7.1"
+  }
+}
